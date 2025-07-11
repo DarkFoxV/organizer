@@ -1,0 +1,67 @@
+app:
+  title: "Organizador"
+
+search:
+  button:
+    search: "Buscar"
+  input:
+    description: "Digite a descrição"
+    
+register:
+  tooltip:
+    select_image: "Nenhuma imagem selecionada"
+  button:
+    add_image: "Adicionar Imagem"
+    select_image: "Selecionar Imagem"
+  input:
+    description: "Descrição"
+
+update:
+  button:
+    save: "Salvar"
+  tooltip:
+    current_image: "Imagem Atual"
+    description: "Descrição será alterada"
+    tags: "Tags serão alteradas"
+
+preferences:
+  title: "Preferências"
+  label:
+    language: "Idioma:"
+    theme: "Tema:"
+    items_per_page: "Itens por página (1-100):"
+  select:
+    language: "Selecione um idioma"
+    theme: "Selecione um tema"
+
+navbar:
+  button:
+    home: "Home"
+    search: "Buscar Imagens"
+    register: "Registrar"
+    workspace: "Espaço de Trabalho"
+    settings: "Configurações"
+    add_image: "Adicionar Imagem"
+
+  tooltip:
+    edit_image: "Editar Imagem"
+
+message:
+  copy:
+    success: "Imagem copiada para clipboard"
+    error: "Erro ao copiar imagem para clipboard"
+  register:
+    success: "Imagem registrada com sucesso"
+    error: "Erro ao registrar imagem"
+  update:
+    success: "Imagem atualizada com sucesso"
+    error: "Erro ao atualizar imagem"
+  delete:
+    success: "Imagem excluida com sucesso"
+    error: "Erro ao excluir imagem"
+  tag:
+    success: "Tag adicionada com sucesso"
+    error: "Erro ao adicionar tag"
+  open:
+    success: "Imagem aberta com sucesso"
+    error: "Erro ao abrir imagem"

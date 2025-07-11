@@ -1,0 +1,66 @@
+app:
+  title: "Organizer"
+
+search:
+  button:
+    search: "Search"
+  input:
+    description: "Type a description"
+
+register:
+  tooltip:
+    select_image: "No image selected"
+  button:
+    add_image: "Add Image"
+    select_image: "Select Image"
+  input:
+    description: "Description"
+
+update:
+  button:
+    save: "Save"
+  tooltip:
+    current_image: "Current Image"
+    description: "Description will be updated"
+    tags: "Tags will be updated"
+
+preferences:
+  title: "Preferences"
+  label:
+    language: "Language:"
+    theme: "Theme:"
+    items_per_page: "Items per page (1-100):"
+  select:
+    language: "Select a language"
+    theme: "Select a theme"
+
+navbar:
+  button:
+    home: "Home"
+    search: "Search Images"
+    register: "Register"
+    workspace: "Workspace"
+    settings: "Settings"
+    add_image: "Add Image"
+  tooltip:
+    edit_image: "Edit Image"
+
+message:
+  copy:
+    success: "Image copied to clipboard"
+    error: "Failed to copy image to clipboard"
+  register:
+    success: "Image successfully registered"
+    error: "Failed to register image"
+  update:
+    success: "Image successfully updated"
+    error: "Failed to update image"
+  delete:
+    success: "Image successfully deleted"
+    error: "Failed to delete image"
+  tag:
+    success: "Tag successfully added"
+    error: "Failed to add tag"
+  open:
+    success: "Image successfully opened"
+    error: "Failed to open image"

@@ -1,0 +1,262 @@
+use crate::models::filter::{Filter, SortOrder};
+use crate::models::image::{ActiveModel, Entity, Model};
+use crate::models::image_dto::{ImageDTO, ImageUpdateDTO};
+use crate::models::page::Page;
+use crate::models::{image, image_tag, tag};
+use crate::services::connection_db::get_connection;
+use crate::services::tag_service::{get_tags_for_images, update_tags};
+use sea_orm::{prelude::*, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, InsertResult, JoinType, Order, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait};
+use std::collections::{HashMap, HashSet};
+
+pub async fn insert_image(desc: &str) -> Result<i64, DbErr> {
+    let db = get_connection().await?;
+    let new_image = ActiveModel {
+        description: Set(desc.to_string()),
+        path: Set(String::new()),
+        thumbnail_path: Set(String::new()),
+        ..Default::default()
+    };
+
+    let result: InsertResult<ActiveModel> = Entity::insert(new_image).exec(&db).await?;
+    Ok(result.last_insert_id)
+}
+
+pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<ImageDTO>, DbErr> {
+    let db = get_connection().await?;
+
+    // Verificar se temos filtros para aplicar
+    let has_query = !filter.query.trim().is_empty();
+    let has_tags = !filter.tags.is_empty();
+
+    // Se não há filtros, buscar todas as imagens
+    if !has_query && !has_tags {
+        return find_all_images_without_filter(page, size, filter, &db).await;
+    }
+
+    // Query base para imagens
+    let mut query = image::Entity::find();
+
+    // Se temos filtro por tags, fazemos join
+    if has_tags {
+        let tag_count = filter.tags.len() as i64;
+
+        query = query
+            .join(JoinType::InnerJoin, image::Relation::ImageTag.def())
+            .join(JoinType::InnerJoin, image_tag::Relation::Tag.def())
+            .filter(tag::Column::Name.is_in(filter.tags.iter().cloned().collect::<Vec<_>>()))
+            .group_by(image::Column::Id)
+            .having(Expr::col(tag::Column::Name).count().eq(tag_count));
+    }
+
+    // Aplicar condição de descrição se existe
+    if let Some(desc_cond) = build_desc_condition(&filter.query) {
+        query = query.filter(desc_cond);
+    }
+
+    // Contagem total para paginação
+    let total_count = query
+        .clone()
+        .select_only()
+        .column(image::Column::Id)
+        .distinct()
+        .count(&db)
+        .await?;
+
+    let total_pages = if total_count == 0 {
+        0
+    } else {
+        (total_count + size - 1) / size
+    };
+
+    if filter.sort_order == SortOrder::CreatedDesc {
+        query = query.order_by(image::Column::CreatedAt, Order::Desc);
+    } else {
+        query = query.order_by(image::Column::CreatedAt, Order::Asc);
+    }
+
+    // Buscar imagens paginadas
+    let images = query
+        .select_only()
+        .columns([
+            image::Column::Id,
+            image::Column::Path,
+            image::Column::ThumbnailPath,
+            image::Column::Description,
+        ])
+        .distinct()
+        .limit(size)
+        .offset(page * size)
+        .into_model::<Model>()
+        .all(&db)
+        .await?;
+
+    // Buscar tags para essas imagens
+    let image_ids: Vec<i64> = images.iter().map(|img| img.id).collect();
+
+    let image_tags = get_tags_for_images(&image_ids, &db).await?;
+
+    // Agrupar tags por image_id
+    let mut tags_map: HashMap<i64, HashSet<String>> = HashMap::new();
+    for (image_id, tag_name) in image_tags {
+        tags_map.entry(image_id).or_default().insert(tag_name);
+    }
+
+    let dtos: Vec<ImageDTO> = to_dto(images, tags_map).await;
+
+    Ok(Page {
+        content: dtos,
+        total_pages,
+        page_number: page,
+    })
+}
+
+async fn find_all_images_without_filter(
+    page: u64,
+    size: u64,
+    filter: Filter,
+    db: &DatabaseConnection,
+) -> Result<Page<ImageDTO>, DbErr> {
+    // Contagem total
+    let total_count = image::Entity::find().count(db).await?;
+    let total_pages = if total_count == 0 {
+        0
+    } else {
+        (total_count + size - 1) / size
+    };
+
+    // 1. Comece seu builder sem WHERE nem select_only
+    let mut query = image::Entity::find()
+        .limit(size)
+        .offset(page * size);
+
+    // 2. Aplique o ORDER BY de acordo com o filtro
+    query = if filter.sort_order == SortOrder::CreatedDesc {
+        query.order_by(image::Column::CreatedAt, Order::Desc)
+    } else {
+        query.order_by(image::Column::CreatedAt, Order::Asc)
+    };
+
+    // 3. Execute a consulta
+    let images: Vec<Model> = query
+        .all(db)
+        .await?;
+
+    // Buscar tags para essas imagens
+    let image_ids: Vec<i64> = images.iter().map(|img| img.id).collect();
+
+    let image_tags = get_tags_for_images(&image_ids, db).await?;
+
+    // Agrupar tags por image_id
+    let mut tags_map: HashMap<i64, HashSet<String>> = HashMap::new();
+    for (image_id, tag_name) in image_tags {
+        tags_map.entry(image_id).or_default().insert(tag_name);
+    }
+
+    let dtos: Vec<ImageDTO> = to_dto(images, tags_map).await;
+
+    Ok(Page {
+        content: dtos,
+        total_pages,
+        page_number: page,
+    })
+}
+
+pub async fn delete_image(id_val: i64) -> Result<(), DbErr> {
+    let db = get_connection().await?;
+    let txn = db.begin().await?;
+
+    Entity::delete_by_id(id_val).exec(&txn).await?;
+
+    txn.commit().await?;
+    Ok(())
+}
+
+pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbErr> {
+    let db = get_connection()
+        .await
+        .expect("Failed to connect to database");
+    let existing_model = find_by_id(id)
+        .await
+        .one(&db)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound("Image not found".to_string()))?;
+
+    // Converte para ActiveModel
+    let mut active_model: ActiveModel = existing_model.into();
+
+    // Atualiza apenas os campos que não estão vazios
+    if let Some(path) = dto.path {
+        if !path.is_empty() {
+            active_model.path = Set(path);
+        }
+    }
+
+    if let Some(thumbnail_path) = dto.thumbnail_path {
+        if !thumbnail_path.is_empty() {
+            active_model.thumbnail_path = Set(thumbnail_path);
+        }
+    }
+
+    if let Some(description) = dto.description {
+        if !description.is_empty() {
+            active_model.description = Set(description);
+        }
+    }
+
+    // Atualiza no banco de dados
+    let updated_model = active_model.update(&db).await?;
+
+    // Se tags foram fornecidas, atualiza as tags também
+    if let Some(tags) = dto.tags {
+        if !tags.is_empty() {
+            update_tags(&db, id, tags).await?;
+        }
+    }
+
+    Ok(updated_model)
+}
+
+pub async fn find_by_id(id_val: i64) -> Select<Entity> {
+    Entity::find_by_id(id_val)
+}
+
+fn build_desc_condition(query: &str) -> Option<Condition> {
+    let q = query.trim();
+    if q.is_empty() {
+        return None;
+    }
+
+    if q.contains('+') {
+        let mut cond = Condition::any();
+        for term in q.split('+').map(str::trim).filter(|t| !t.is_empty()) {
+            cond = cond.add(
+                image::Column::Description.contains(term)
+            );
+        }
+        Some(cond)
+    } else {
+        Some(
+            Condition::all().add(
+                image::Column::Description.contains(q)
+            )
+        )
+    }
+}
+
+
+pub async fn to_dto(
+    images: Vec<Model>,
+    mut tags_map: HashMap<i64, HashSet<String>>,
+) -> Vec<ImageDTO> {
+    let images: Vec<ImageDTO> = images
+        .into_iter()
+        .map(|img| ImageDTO {
+            id: img.id,
+            path: img.path,
+            thumbnail_path: img.thumbnail_path,
+            description: img.description,
+            tags: tags_map.remove(&img.id).unwrap_or_default(),
+        })
+        .collect();
+    images
+}
