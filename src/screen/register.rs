@@ -1,16 +1,16 @@
-use crate::components::tag_selector::TagSelector;
-use crate::components::toast::ToastKind;
 use crate::components::tag_selector;
+use crate::components::tag_selector::TagSelector;
 use crate::models::image_dto::ImageUpdateDTO;
 use crate::services::file_service::save_image_file_with_thumbnail;
 use crate::services::{image_service, tag_service};
 use iced::widget::image::Handle;
-use iced::widget::{text_input, Button, Column, Container, Image, Text};
+use iced::widget::{Button, Column, Container, Image, Text, text_input};
 use iced::{Element, Task};
 use iced_modern_theme::Modern;
+use log::{error, info};
 use rfd::AsyncFileDialog;
 use std::collections::HashSet;
-use std::time::Duration;
+use crate::services::toast_service::{push_error, push_success};
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -24,12 +24,7 @@ pub enum Message {
         description: String,
         tags: HashSet<String>,
     },
-    ShowToast {
-        kind: ToastKind,
-        message: String,
-        duration: Option<Duration>,
-    },
-    SubmitFailed(String),
+    NoOps,
 }
 
 pub enum Action {
@@ -54,8 +49,8 @@ impl Register {
                 description: String::new(),
                 tag_selector,
             },
-            Task::perform(async { tag_service::find_all().await}, |tags| {
-                Message::TagsLoaded(tags.expect("REASON"))
+            Task::perform(async { tag_service::find_all().await }, |tags| {
+                Message::TagsLoaded(tags.expect("Failed to load tags"))
             }),
         )
     }
@@ -72,8 +67,8 @@ impl Register {
                             .await
                     },
                     |maybe| {
-                        if let Some(handle) = maybe {
-                            Message::ImageChosen(handle.path().to_string_lossy().to_string())
+                        if let Some(file) = maybe {
+                            Message::ImageChosen(file.path().to_string_lossy().to_string())
                         } else {
                             Message::ImageChosen(String::new())
                         }
@@ -81,15 +76,6 @@ impl Register {
                 );
                 Action::Run(task)
             }
-            Message::TagsLoaded(tags) => {
-                self.tag_selector.available = tags;
-                Action::None
-            }
-            Message::TagSelectorMessage(msg) => {
-                self.tag_selector.update(msg);
-                Action::None
-            }
-
             Message::ImageChosen(path) => {
                 self.image_path = path;
                 Action::None
@@ -98,7 +84,17 @@ impl Register {
                 self.description = desc;
                 Action::None
             }
-
+            Message::TagsLoaded(tags) => {
+                info!("Loaded tags: {:#?}", tags);
+                self.tag_selector.available = tags;
+                Action::None
+            }
+            Message::TagSelectorMessage(msg) => {
+                let task: Task<tag_selector::Message> = self.tag_selector.update(msg);
+                let task: Task<Message> =
+                    task.map(Message::TagSelectorMessage);
+                Action::Run(task)
+            }
             Message::Submit {
                 path,
                 description,
@@ -109,33 +105,31 @@ impl Register {
                         let image_id = image_service::insert_image(&description).await.unwrap();
                         match save_image_file_with_thumbnail(image_id, &path) {
                             Ok((new_path, thumb_path)) => {
-                                let mut image = ImageUpdateDTO::default();
-                                image.path = Some(new_path.clone());
-                                image.thumbnail_path = Some(thumb_path.clone());
-                                image.tags = Some(tags.clone());
-                                image_service::update_from_dto(image_id, image).await.unwrap();
+                                let mut dto = ImageUpdateDTO::default();
+                                dto.path = Some(new_path);
+                                dto.thumbnail_path = Some(thumb_path);
+                                dto.tags = Some(tags);
+                                image_service::update_from_dto(image_id, dto).await.unwrap();
                                 Ok(())
                             }
                             Err(err) => Err(err),
                         }
                     },
                     |result| match result {
-                        Ok(_) => Message::ShowToast {
-                            kind: ToastKind::Success,
-                            message: "Image registered successfully".to_string(),
-                            duration: None,
-                        },
-                        Err(err) => Message::ShowToast {
-                            kind: ToastKind::Error,
-                            message: err.to_string(),
-                            duration: None,
-                        },
+                        Ok(_) => {
+                            push_success(t!("message.register.success"));
+                            Message::NoOps
+                        }
+                        Err(err) => {
+                            error!("{}", err);
+                            push_error(t!("message.register.error"));
+                            Message::NoOps
+                        }
                     },
                 );
-
-                Action::Batch(vec![Action::GoToSearch, Action::Run(task)])
+                Action::Batch(vec![Action::Run(task), Action::GoToSearch])
             }
-            _ => Action::None,
+            Message::NoOps => {Action::None}
         }
     }
 
@@ -179,13 +173,18 @@ impl Register {
             && !self.tag_selector.selected.is_empty();
 
         if ready {
-            form = form.push(Button::new(Text::new(t!("register.button.add_image"))).on_press(Message::Submit {
-                path: self.image_path.clone(),
-                description: self.description.clone(),
-                tags: self.tag_selector.selected_tags(),
-            }));
+            form = form.push(
+                Button::new(Text::new(t!("register.button.add_image")))
+                    .on_press(Message::Submit {
+                        path: self.image_path.clone(),
+                        description: self.description.clone(),
+                        tags: self.tag_selector.selected_tags(),
+                    })
+                    .style(Modern::primary_button()),
+            );
         }
 
         form.into()
     }
+
 }

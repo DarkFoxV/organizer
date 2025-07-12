@@ -7,19 +7,20 @@ mod screen;
 mod services;
 
 use crate::components::navbar::{NavButton, Navbar};
-use crate::components::toast::{Toast, ToastKind};
-use crate::components::{navbar, toast};
+use crate::components::toast_view::ToastView;
+use crate::components::{navbar, toast_view};
+use crate::config::get_settings;
+use crate::models::toast::Toast;
 use crate::screen::update::Update;
 use crate::screen::{Preferences, preferences, search};
 use crate::screen::{Register, Screen, Search};
 use crate::screen::{register, update};
-use crate::services::{database_service, logger_service};
+use crate::services::{database_service, logger_service, toast_service};
 use iced::widget::{Column, Row, container, stack};
 use iced::{Alignment, Element, Length, Subscription, Task, Theme, time};
-use std::time::{Duration, Instant};
 use iced_modern_theme::Modern;
 use log::info;
-use crate::config::get_settings;
+use std::time::{Duration, Instant};
 
 i18n!("locales", fallback = "en");
 
@@ -31,38 +32,34 @@ pub enum Message {
     Update(update::Message),
     Preferences(preferences::Message),
     SettingsUpdated,
-    Toast(toast::Message),
+    Toast(toast_view::Message),
     Tick(Instant),
-    HandleToast{
-        kind: ToastKind,
-        message: String,
-        duration: Option<Duration>,
-    },
+    HandleToast(Toast),
 }
-
 
 pub struct Organizer {
     theme: Theme,
     screen: Screen,
     navbar: Navbar,
-    toasts: Vec<Toast>,
-    next_toast_id: u32,
+    toasts: Vec<ToastView>,
 }
-
 
 impl Organizer {
     pub fn new() -> (Self, Task<Message>) {
         let (search, search_task) = Search::new();
         let task = search_task.map(Message::Search);
         let settings = get_settings();
-        let theme = if settings.config.theme == "Dark" { Modern::dark_theme() } else { Modern::light_theme() };
+        let theme = if settings.config.theme == "Dark" {
+            Modern::dark_theme()
+        } else {
+            Modern::light_theme()
+        };
         (
             Self {
                 theme,
                 screen: Screen::Search(search),
                 navbar: Navbar::new(),
                 toasts: vec![],
-                next_toast_id: 0,
             },
             task,
         )
@@ -72,55 +69,19 @@ impl Organizer {
         t!("app.title").to_string()
     }
 
+    pub fn toast(&mut self, toast: ToastView) {
+        self.toasts.push(toast);
+    }
+
     fn theme(&self) -> Theme {
         self.theme.clone()
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::HandleToast {
-                kind,
-                message,
-                duration,
-            } => {
-                self.toasts.push(Toast {
-                    id: self.next_toast_id,
-                    message,
-                    kind,
-                    created: Instant::now(),
-                    duration: duration.unwrap_or(Duration::from_secs(4)),
-                });
-                self.next_toast_id += 1;
-                Task::none()
-            }
-            Message::Register(register::Message::ShowToast {
-                kind,
-                message,
-                duration,
-            }) => {
-                self.toasts.push(Toast {
-                    id: self.next_toast_id,
-                    message,
-                    kind,
-                    created: Instant::now(),
-                    duration: duration.unwrap_or(Duration::from_secs(4)),
-                });
-                self.next_toast_id += 1;
-                Task::none()
-            }
-            Message::Update(update::Message::ShowToast {
-                kind,
-                message,
-                duration,
-            }) => {
-                self.toasts.push(Toast {
-                    id: self.next_toast_id,
-                    message,
-                    kind,
-                    created: Instant::now(),
-                    duration: duration.unwrap_or(Duration::from_secs(4)),
-                });
-                self.next_toast_id += 1;
+            Message::HandleToast(mut toast) => {
+                toast.duration = Duration::from_secs(4);
+                self.toasts.push(ToastView { toast });
                 Task::none()
             }
             Message::Search(message) => {
@@ -130,19 +91,11 @@ impl Organizer {
                     match action {
                         search::Action::None => Task::none(),
                         search::Action::Run(task) => task.map(Message::Search),
-                        search::Action::ShowToast {kind, message, duration} => {
-                            self.update(Message::HandleToast {
-                                kind,
-                                message,
-                                duration
-                            })
-                        },
                         search::Action::NavigateToUpdate(dto) => {
                             let (update, task) = Update::new(dto);
                             self.screen = Screen::Update(update);
                             task.map(Message::Update)
-                        },
-
+                        }
                     }
                 } else {
                     Task::none()
@@ -264,20 +217,29 @@ impl Organizer {
                     navbar::Action::None => Task::none(),
                 }
             }
+
             Message::Tick(now) => {
-                self.toasts
-                    .retain(|toast| now.duration_since(toast.created) < Duration::from_secs(4));
+                self.toasts.retain(|toast| {
+                    now.duration_since(toast.toast.created) < Duration::from_secs(4)
+                });
                 Task::none()
             }
-            Message::Toast(toast::Message::Dismiss(id)) => {
-                self.toasts.retain(|toast| toast.id != id);
+            Message::Toast(toast_view::Message::Dismiss(id)) => {
+                self.toasts.retain(|toast| toast.toast.id != Some(id));
                 Task::none()
-            },
+            }
         }
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        time::every(Duration::from_millis(500)).map(Message::Tick)
+        time::every(Duration::from_millis(100)).map(|_| {
+            if let Some(toast) = toast_service::pop_toast() {
+                info!("Popping toast: {}", toast.message);
+                Message::HandleToast(toast)
+            } else {
+                Message::Tick(Instant::now())
+            }
+        })
     }
 
     pub fn view(&self) -> Element<Message> {
@@ -312,7 +274,7 @@ impl Organizer {
 fn main() -> iced::Result {
     info!("Starting application");
     logger_service::init().expect("Failed to initialize logger");
-    
+
     info!("{:?}", _rust_i18n_available_locales());
 
     {

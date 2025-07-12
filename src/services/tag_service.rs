@@ -81,3 +81,15 @@ pub async fn find_all() -> Result<Vec<String>, DbErr> {
         .all(&db)
         .await
 }
+
+pub async fn save(p0: &String) -> Result<(), DbErr> {
+    // Convert tag name to lowercase to ensure consistency
+    let name = p0.to_lowercase();
+    let db = get_connection().await?;
+    let new_tag = tag::ActiveModel {
+        name: Set(name),
+        ..Default::default()
+    };
+    new_tag.insert(&db).await?;
+    Ok(())
+}

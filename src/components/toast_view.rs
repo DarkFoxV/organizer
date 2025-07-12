@@ -1,15 +1,10 @@
+use crate::models::toast::Toast;
 use iced::alignment::Vertical;
 use iced::widget::{Column, Container, Row, Space, Text, button};
-use iced::{Length, alignment, Alignment};
+use iced::{Alignment, Length, alignment};
 use iced_font_awesome::fa_icon;
 use iced_modern_theme::Modern;
-use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone)]
-pub enum ToastKind {
-    Success,
-    Error,
-}
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -17,28 +12,28 @@ pub enum Message {
 }
 
 #[derive(Debug, Clone)]
-pub struct Toast {
-    pub id: u32,
-    pub message: String,
-    pub kind: ToastKind,
-    pub created: Instant,
-    pub duration: Duration,
+pub struct ToastView {
+    pub toast: Toast,
 }
 
-impl Toast {
+impl ToastView {
+    pub fn new(toast: Toast) -> ToastView {
+        ToastView { toast }
+    }
+
     pub fn view(&self) -> iced::Element<'_, Message> {
         // Botão de fechar alinhado à direita
-        let close_button =  button(
+        let close_button = button(
             Container::new(fa_icon("circle-xmark").size(17.5))
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .align_x(Alignment::Center)
-                .align_y(Alignment::Center)
+                .align_y(Alignment::Center),
         )
-            .width(Length::Fixed(25.0))
-            .height(Length::Fixed(25.0))
-            .on_press(Message::Dismiss(self.id))
-            .style(Modern::danger_button());
+        .width(Length::Fixed(25.0))
+        .height(Length::Fixed(25.0))
+        .on_press(Message::Dismiss(self.toast.id.expect("REASON")))
+        .style(Modern::danger_button());
 
         // Header com botão à direita
         let header = Row::new()
@@ -48,7 +43,7 @@ impl Toast {
 
         // Mensagem centralizada
         let message = Container::new(
-            Text::new(&self.message)
+            Text::new(&self.toast.message)
                 .size(14)
                 .style(Modern::primary_text()),
         )

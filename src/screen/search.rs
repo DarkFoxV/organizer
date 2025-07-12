@@ -1,10 +1,9 @@
 use crate::components::image_container::ImageContainer;
-use crate::components::toast::ToastKind;
 use crate::config::get_settings;
-use crate::models::filter::SortOrder::CreatedAsc;
 use crate::models::filter::{Filter, SortOrder};
 use crate::models::image_dto::ImageDTO;
 use crate::services::clipboard_service::copy_image_to_clipboard;
+use crate::services::toast_service::{push_error, push_success};
 use crate::services::{file_service, image_service, tag_service};
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::image::{Handle, viewer};
@@ -23,11 +22,6 @@ pub enum Action {
     None,
     Run(Task<Message>),
     NavigateToUpdate(ImageDTO),
-    ShowToast {
-        kind: ToastKind,
-        message: String,
-        duration: Option<Duration>,
-    },
 }
 
 #[derive(Debug, Clone)]
@@ -47,14 +41,10 @@ pub enum Message {
     TagsLoaded(Vec<String>),
     GoToPage(u64),
     Update(i64),
-    ShowToast {
-        kind: ToastKind,
-        message: String,
-        duration: Option<Duration>,
-    },
     ClosePreview,
     NavigateWithDTO(ImageDTO),
     SortOrderChanged(SortOrder),
+    NoOps,
 }
 
 pub struct Search {
@@ -108,16 +98,6 @@ impl Search {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
-            Message::ShowToast {
-                kind,
-                message,
-                duration,
-            } => Action::ShowToast {
-                kind,
-                message,
-                duration,
-            },
-
             Message::QueryChanged(query) => {
                 self.query = query.clone();
                 let task = Task::perform(
@@ -170,11 +150,7 @@ impl Search {
                     async move {
                         let _ = file_service::open_in_file_explorer(&path_buf);
                     },
-                    |_| Message::ShowToast {
-                        kind: ToastKind::Success,
-                        message: t!("message.open.success").to_string(),
-                        duration: None,
-                    },
+                    |_| Message::NoOps,
                 );
                 Action::Run(task)
             }
@@ -183,24 +159,19 @@ impl Search {
                 let task = Task::perform(
                     async move {
                         match copy_image_to_clipboard(&src) {
-                            Ok(_) => Message::ShowToast {
-                                kind: ToastKind::Success,
-                                message: t!("message.copy.success").to_string(),
-                                duration: None,
-                            },
+                            Ok(_) => {
+                                push_success(t!("message.copy.success"));
+                                Message::NoOps
+                            }
                             Err(e) => {
                                 error!("Error copying image to clipboard: {}", e);
-                                Message::ShowToast {
-                                    kind: ToastKind::Error,
-                                    message: t!("message.copy.error").to_string(),
-                                    duration: None,
-                                }
+                                push_error(t!("message.copy.error"));
+                                Message::NoOps
                             }
                         }
                     },
                     |msg| msg,
                 );
-
                 Action::Run(task)
             }
 

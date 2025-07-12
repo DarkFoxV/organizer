@@ -1,6 +1,7 @@
+use crate::components::tag_selector;
 use crate::components::tag_selector::{Message as TagSelectorMessage, TagSelector};
-use crate::components::toast::ToastKind;
 use crate::models::image_dto::{ImageDTO, ImageUpdateDTO};
+use crate::services::toast_service::{push_error, push_success};
 use crate::services::{image_service, tag_service};
 use iced::alignment::Vertical;
 use iced::widget::image::Handle;
@@ -8,8 +9,8 @@ use iced::widget::{Button, Column, Container, Image, Row, Space, Text, button, t
 use iced::{Alignment, Element, Length, Task};
 use iced_font_awesome::fa_icon;
 use iced_modern_theme::Modern;
+use log::{error, info};
 use std::collections::HashSet;
-use std::time::Duration;
 
 pub enum Action {
     None,
@@ -27,13 +28,8 @@ pub enum Message {
         description: String,
         tags: HashSet<String>,
     },
-    ShowToast {
-        kind: ToastKind,
-        message: String,
-        duration: Option<Duration>,
-    },
     NavigateToSearch,
-    SubmitFailed(String),
+    NoOps,
 }
 
 pub struct Update {
@@ -80,8 +76,9 @@ impl Update {
             }
 
             Message::TagSelectorMessage(msg) => {
-                self.tag_selector.update(msg);
-                Action::None
+                let task: Task<tag_selector::Message> = self.tag_selector.update(msg);
+                let task: Task<Message> = task.map(Message::TagSelectorMessage);
+                Action::Run(task)
             }
 
             Message::DescriptionChanged(desc) => {
@@ -108,34 +105,23 @@ impl Update {
                         image_service::update_from_dto(image_id, update_dto).await
                     },
                     |result| match result {
-                        Ok(_) => Message::ShowToast {
-                            kind: ToastKind::Success,
-                            message: "Image updated successfully".to_string(),
-                            duration: Some(Duration::from_secs(3)),
-                        },
-                        Err(err) => Message::ShowToast {
-                            kind: ToastKind::Error,
-                            message: format!("Failed to update image: {}", err),
-                            duration: Some(Duration::from_secs(5)),
-                        },
+                        Ok(_) => {
+                            push_success(t!("message.update.success"));
+                            Message::NoOps
+                        }
+                        Err(err) => {
+                            error!("Error updating image: {}", err);
+                            push_error(t!("message.update.error"));
+                            Message::NoOps
+                        }
                     },
                 );
 
                 Action::Batch(vec![Action::Run(task), Action::GoToSearch])
             }
-
-            Message::ShowToast { .. } => {
-                // O toast será tratado pelo componente pai
-                Action::None
-            }
-
             Message::NavigateToSearch => Action::GoToSearch,
 
-            Message::SubmitFailed(error) => Action::Run(Task::done(Message::ShowToast {
-                kind: ToastKind::Error,
-                message: error,
-                duration: Some(Duration::from_secs(5)),
-            })),
+            _ => Action::None,
         }
     }
 

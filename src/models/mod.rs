@@ -4,3 +4,4 @@ pub mod image;
 pub mod tag;
 pub mod image_tag;
 pub mod filter;
+pub mod toast;

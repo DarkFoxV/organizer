@@ -59,6 +59,7 @@ message:
     success: "Image successfully deleted"
     error: "Failed to delete image"
   tag:
+    new: "+ New tag"
     success: "Tag successfully added"
     error: "Failed to add tag"
   open:

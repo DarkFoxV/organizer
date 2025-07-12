@@ -6,3 +6,4 @@ pub mod connection_db;
 pub mod tag_service;
 pub mod database_service;
 pub mod logger_service;
+pub mod toast_service;

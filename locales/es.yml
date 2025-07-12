@@ -60,6 +60,7 @@ message:
     success: "Imagen eliminada con éxito"
     error: "Error al eliminar la imagen"
   tag:
+    new: "+ Nueva Etiqueta"
     success: "Etiqueta añadida con éxito"
     error: "Error al añadir la etiqueta"
   open:
