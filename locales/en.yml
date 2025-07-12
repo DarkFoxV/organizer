@@ -4,6 +4,7 @@ app:
 search:
   button:
     search: "Search"
+    register: "Register"
   input:
     description: "Type a description"
 

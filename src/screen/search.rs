@@ -22,6 +22,7 @@ pub enum Action {
     None,
     Run(Task<Message>),
     NavigateToUpdate(ImageDTO),
+    NavigatorToRegister,
 }
 
 #[derive(Debug, Clone)]
@@ -31,7 +32,6 @@ pub enum Message {
     SearchButtonPressed,
     RequestImages,
     PushContainer(Vec<ImageDTO>, u64, u64),
-    LoadImage(ImageContainer),
     OpenImage(i64),
     OpenLocalImage(i64),
     DeleteImage(i64),
@@ -43,6 +43,7 @@ pub enum Message {
     Update(i64),
     ClosePreview,
     NavigateWithDTO(ImageDTO),
+    NavigateToRegister,
     SortOrderChanged(SortOrder),
     NoOps,
 }
@@ -185,25 +186,21 @@ impl Search {
                     |_| {
                         push_success(t!("message.delete.success"));
                         Message::NoOps
-                    }
+                    },
                 );
                 Action::Run(task)
             }
 
             Message::PushContainer(images, current_page, total_pages) => {
-                let mut batch: Vec<Task<Message>> = vec![];
-
+                info!("Pushing {} images", images.len());
                 for img in images {
-                    let task = Task::perform(async move {}, move |_| {
-                        Message::LoadImage(ImageContainer::new(img.clone()))
-                    });
-                    batch.push(task);
+                    self.images.push(ImageContainer::new(img.clone()));
                 }
 
                 self.current_page = current_page;
                 self.total_pages = total_pages;
 
-                Action::Run(Task::batch(batch))
+                Action::None
             }
 
             Message::OpenImage(id) => {
@@ -219,12 +216,6 @@ impl Search {
 
             Message::ClosePreview => {
                 self.show_preview = false;
-                Action::None
-            }
-
-            Message::LoadImage(img) => {
-                info!("Imagens loaded: {}", img.image_dto.path);
-                self.images.push(img);
                 Action::None
             }
 
@@ -317,14 +308,14 @@ impl Search {
                 Action::Run(task)
             }
 
+            Message::NavigateToRegister => Action::NavigatorToRegister,
             _others => Action::None,
         }
     }
 
     pub fn view(&self) -> Element<Message> {
         let header = Column::new()
-            .padding(10)
-            .spacing(5)
+            .spacing(8)
             .push(
                 Row::new()
                     .spacing(10)
@@ -341,6 +332,14 @@ impl Search {
                         )
                         .style(Modern::primary_button())
                         .on_press(Message::SearchButtonPressed)
+                        .width(Length::FillPortion(1)),
+                    )
+                    .push(
+                        Button::new(
+                            Text::new(t!("search.button.register")).align_x(Horizontal::Center),
+                        )
+                        .style(Modern::primary_button())
+                        .on_press(Message::NavigateToRegister)
                         .width(Length::FillPortion(1)),
                     )
                     .push(

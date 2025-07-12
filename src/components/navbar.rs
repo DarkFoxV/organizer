@@ -16,7 +16,6 @@ pub enum Action {
 pub enum NavButton {
     Home,
     Search,
-    Register,
     Workspace,
     Preferences,
 }
@@ -89,11 +88,6 @@ impl Navbar {
             .push(styled_button(
                 t!("navbar.button.search").to_string(),
                 NavButton::Search,
-                self.selected,
-            ))
-            .push(styled_button(
-                t!("navbar.button.register").to_string(),
-                NavButton::Register,
                 self.selected,
             ))
             .push(styled_button(

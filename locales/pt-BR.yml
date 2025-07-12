@@ -4,6 +4,7 @@ app:
 search:
   button:
     search: "Buscar"
+    register: "Registrar"
   input:
     description: "Digite a descrição"
     
@@ -41,7 +42,6 @@ navbar:
     register: "Registrar"
     workspace: "Espaço de Trabalho"
     settings: "Configurações"
-    add_image: "Adicionar Imagem"
 
   tooltip:
     edit_image: "Editar Imagem"

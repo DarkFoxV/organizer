@@ -2,6 +2,7 @@ pub mod register;
 pub mod search;
 pub mod update;
 pub mod preferences;
+mod manage_tags;
 
 pub use search::Search;
 pub use register::Register;

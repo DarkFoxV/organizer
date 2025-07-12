@@ -16,8 +16,10 @@ use crate::screen::{Preferences, preferences, search};
 use crate::screen::{Register, Screen, Search};
 use crate::screen::{register, update};
 use crate::services::{database_service, logger_service, toast_service};
+use iced::event;
+use iced::keyboard;
 use iced::widget::{Column, Row, container, stack};
-use iced::{Alignment, Element, Length, Subscription, Task, Theme, time};
+use iced::{Alignment, Element, Event, Length, Subscription, Task, Theme, time};
 use iced_modern_theme::Modern;
 use log::info;
 use std::time::{Duration, Instant};
@@ -35,6 +37,9 @@ pub enum Message {
     Toast(toast_view::Message),
     Tick(Instant),
     HandleToast(Toast),
+    EscapePressed,
+    PasteShortcut,
+    NoOps,
 }
 
 pub struct Organizer {
@@ -96,6 +101,11 @@ impl Organizer {
                             self.screen = Screen::Update(update);
                             task.map(Message::Update)
                         }
+                        search::Action::NavigatorToRegister => {
+                            let (register, task) = Register::new();
+                            self.screen = Screen::Register(register);
+                            task.map(Message::Register)
+                        }
                     }
                 } else {
                     Task::none()
@@ -138,13 +148,7 @@ impl Organizer {
                     match action {
                         update::Action::None => Task::none(),
                         update::Action::Run(task) => task.map(Message::Update),
-                        update::Action::GoToSearch => {
-                            info!("Go to search");
-                            let (search, task) = Search::new();
-                            self.screen = Screen::Search(search);
-                            self.navbar.selected = NavButton::Search;
-                            task.map(Message::Search)
-                        }
+                        update::Action::GoToSearch => self.navigate_to_search(),
                     }
                 } else {
                     Task::none()
@@ -157,13 +161,7 @@ impl Organizer {
                     match action {
                         register::Action::None => Task::none(),
                         register::Action::Run(task) => task.map(Message::Register),
-                        register::Action::GoToSearch => {
-                            info!("Go to search");
-                            let (search, task) = Search::new();
-                            self.screen = Screen::Search(search);
-                            self.navbar.selected = NavButton::Search;
-                            task.map(Message::Search)
-                        }
+                        register::Action::GoToSearch => self.navigate_to_search(),
                     }
                 } else {
                     Task::none()
@@ -185,11 +183,6 @@ impl Organizer {
                             let (search, task) = Search::new();
                             self.screen = Screen::Search(search);
                             task.map(Message::Search)
-                        }
-                        NavButton::Register => {
-                            let (register, task) = Register::new();
-                            self.screen = Screen::Register(register);
-                            task.map(Message::Register)
                         }
                         NavButton::Workspace => {
                             let (register, task) = Register::new();
@@ -216,18 +209,63 @@ impl Organizer {
                 self.toasts.retain(|toast| toast.toast.id != Some(id));
                 Task::none()
             }
+            Message::EscapePressed => {
+                let task = match &mut self.screen {
+                    Screen::Search(search) => {
+                        let msg = Message::Search(search::Message::ClosePreview);
+                        Task::perform(async move { msg }, |m| m)
+                    }
+                    _ => self.navigate_to_search(),
+                };
+                task
+            }
+
+            Message::NoOps => Task::none(),
+            Message::PasteShortcut => Task::none(),
         }
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        time::every(Duration::from_millis(100)).map(|_| {
+        let mut subscriptions = vec![time::every(Duration::from_millis(100)).map(|_| {
             if let Some(toast) = toast_service::pop_toast() {
                 info!("Popping toast: {}", toast.message);
                 Message::HandleToast(toast)
             } else {
                 Message::Tick(Instant::now())
             }
-        })
+        })];
+
+        let keyboard_subscription = match &self.screen {
+            Screen::Register(_) | Screen::Update(_) | Screen::Search(_) => {
+                event::listen().map(|event| match event {
+                    Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => match key {
+                        keyboard::Key::Named(keyboard::key::Named::Escape) => {
+                            Message::EscapePressed
+                        }
+                        _ => Message::NoOps,
+                    },
+                    _ => Message::NoOps,
+                })
+            }
+            _ => Subscription::none(),
+        };
+
+        let clipboard_subscription = match &self.screen {
+            Screen::Register(_) => event::listen().map(|event| match event {
+                Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => match key {
+                    keyboard::Key::Character(ref c) if c == "v" && modifiers.control() => {
+                        Message::PasteShortcut
+                    }
+                    _ => Message::NoOps,
+                },
+                _ => Message::NoOps,
+            }),
+            _ => Subscription::none(),
+        };
+
+        subscriptions.push(clipboard_subscription);
+        subscriptions.push(keyboard_subscription);
+        Subscription::batch(subscriptions)
     }
 
     pub fn view(&self) -> Element<Message> {
@@ -257,6 +295,15 @@ impl Organizer {
 
         stack![layout, toast_overlay].into()
     }
+
+    fn navigate_to_search(&mut self) -> Task<Message> {
+        info!("Go to search");
+        let (search, task) = Search::new();
+        self.screen = Screen::Search(search);
+        self.navbar.selected = NavButton::Search;
+        let task = task.map(Message::Search);
+        task
+    }
 }
 
 fn main() -> iced::Result {
@@ -270,10 +317,10 @@ fn main() -> iced::Result {
         rust_i18n::set_locale(settings.config.language.as_str());
     }
 
-    // Cria runtime Tokio
+    // Create Tokio runtime
     let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
 
-    // Roda inicializações assíncronas
+    // Start database
     rt.block_on(async {
         dotenv::dotenv().ok();
         database_service::prepare_database().await.unwrap();
@@ -281,7 +328,7 @@ fn main() -> iced::Result {
 
     rt.shutdown_background();
 
-    // Inicia o app Iced
+    // Start application
     iced::application(Organizer::title, Organizer::update, Organizer::view)
         .theme(Organizer::theme)
         .subscription(Organizer::subscription)
