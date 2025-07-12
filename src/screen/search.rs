@@ -182,7 +182,10 @@ impl Search {
                         image_service::delete_image(id).await.unwrap();
                         let _ = file_service::delete_image(id);
                     },
-                    |_| Message::Success("Imagem deletada com sucesso".to_string()),
+                    |_| {
+                        push_success(t!("message.delete.success"));
+                        Message::NoOps
+                    }
                 );
                 Action::Run(task)
             }

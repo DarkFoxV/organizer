@@ -6,12 +6,6 @@ use std::sync::{
 };
 use std::time::Duration;
 
-#[derive(Debug, Clone)]
-pub struct ToastService {
-    pub id: u32,
-    pub toast: Toast,
-}
-
 // Contador global de ID de toast
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
 

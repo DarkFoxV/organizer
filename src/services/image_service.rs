@@ -76,13 +76,6 @@ pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<Image
 
     // Buscar imagens paginadas
     let images = query
-        .select_only()
-        .columns([
-            image::Column::Id,
-            image::Column::Path,
-            image::Column::ThumbnailPath,
-            image::Column::Description,
-        ])
         .distinct()
         .limit(size)
         .offset(page * size)
