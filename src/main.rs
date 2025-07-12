@@ -135,23 +135,17 @@ impl Organizer {
                 if let Screen::Update(update) = &mut self.screen {
                     let action = update.update(message);
 
-                    fn to_task(app: &mut Organizer, action: update::Action) -> Task<Message> {
-                        match action {
-                            update::Action::None => Task::none(),
-                            update::Action::Run(task) => task.map(Message::Update),
-                            update::Action::Batch(batch) => {
-                                let tasks: Vec<Task<Message>> =
-                                    batch.into_iter().map(|a| to_task(app, a)).collect();
-                                Task::batch(tasks)
-                            }
-                            update::Action::GoToSearch => {
-                                let (search, task) = Search::new();
-                                app.screen = Screen::Search(search);
-                                task.map(Message::Search)
-                            }
+                    match action {
+                        update::Action::None => Task::none(),
+                        update::Action::Run(task) => task.map(Message::Update),
+                        update::Action::GoToSearch => {
+                            info!("Go to search");
+                            let (search, task) = Search::new();
+                            self.screen = Screen::Search(search);
+                            self.navbar.selected = NavButton::Search;
+                            task.map(Message::Search)
                         }
                     }
-                    to_task(self, action).into()
                 } else {
                     Task::none()
                 }
@@ -160,29 +154,23 @@ impl Organizer {
                 if let Screen::Register(register) = &mut self.screen {
                     let action = register.update(message);
 
-                    // Função recursiva inline
-                    fn to_task(app: &mut Organizer, action: register::Action) -> Task<Message> {
-                        match action {
-                            register::Action::None => Task::none(),
-                            register::Action::Run(task) => task.map(Message::Register),
-                            register::Action::Batch(batch) => {
-                                let tasks: Vec<Task<Message>> =
-                                    batch.into_iter().map(|a| to_task(app, a)).collect();
-                                Task::batch(tasks)
-                            }
-                            register::Action::GoToSearch => {
-                                let (search, task) = Search::new();
-                                app.screen = Screen::Search(search);
-                                task.map(Message::Search)
-                            }
+                    match action {
+                        register::Action::None => Task::none(),
+                        register::Action::Run(task) => task.map(Message::Register),
+                        register::Action::GoToSearch => {
+                            info!("Go to search");
+                            let (search, task) = Search::new();
+                            self.screen = Screen::Search(search);
+                            self.navbar.selected = NavButton::Search;
+                            task.map(Message::Search)
                         }
                     }
-                    to_task(self, action).into()
                 } else {
                     Task::none()
                 }
             }
             Message::Navbar(navbar_msg) => {
+                info!("Navbar message: {:?}", navbar_msg);
                 let action = self.navbar.update(navbar_msg);
 
                 match action {

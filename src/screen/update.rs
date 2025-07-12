@@ -9,14 +9,13 @@ use iced::widget::{Button, Column, Container, Image, Row, Space, Text, button, t
 use iced::{Alignment, Element, Length, Task};
 use iced_font_awesome::fa_icon;
 use iced_modern_theme::Modern;
-use log::{error};
+use log::error;
 use std::collections::HashSet;
 
 pub enum Action {
     None,
     Run(Task<Message>),
     GoToSearch,
-    Batch(Vec<Action>),
 }
 
 #[derive(Debug, Clone)]
@@ -107,17 +106,17 @@ impl Update {
                     |result| match result {
                         Ok(_) => {
                             push_success(t!("message.update.success"));
-                            Message::NoOps
+                            Message::NavigateToSearch
                         }
                         Err(err) => {
                             error!("Error updating image: {}", err);
                             push_error(t!("message.update.error"));
-                            Message::NoOps
+                            Message::NavigateToSearch
                         }
                     },
                 );
 
-                Action::Batch(vec![Action::Run(task), Action::GoToSearch])
+                Action::Run(task)
             }
             Message::NavigateToSearch => Action::GoToSearch,
 
@@ -128,22 +127,25 @@ impl Update {
     pub fn view(&self) -> Element<Message> {
         let handle = Handle::from_path(&self.image_dto.thumbnail_path);
 
-        let image_info = Column::new()
-            .spacing(10)
-            .push(Text::new(t!("update.tooltip.current_image")))
-            .push(
-                Container::new(Image::new(handle).width(200.0).height(200.0))
-                    .padding(10)
-                    .style(Modern::accent_container()),
-            );
-
-        let tags_view = self.tag_selector.view().map(Message::TagSelectorMessage);
-
-        let header: Row<_> = Row::new()
+        // Header with image on the left and close button on the right
+        let header_row = Row::new()
             .width(Length::Fill)
-            .align_y(Vertical::Center)
+            .align_y(Vertical::Top)
+            .spacing(20)
+            .push(
+                // Image on the left
+                Column::new()
+                    .spacing(10)
+                    .push(Text::new(t!("update.tooltip.current_image")))
+                    .push(
+                        Container::new(Image::new(handle).width(200.0).height(200.0))
+                            .padding(10)
+                            .style(Modern::accent_container()),
+                    ),
+            )
             .push(Space::with_width(Length::Fill))
             .push(
+                // Close button on the right (at the top)
                 button(
                     Container::new(fa_icon("circle-xmark").size(20.0))
                         .width(Length::Fill)
@@ -157,11 +159,12 @@ impl Update {
                 .style(Modern::danger_button()),
             );
 
+        let tags_view = self.tag_selector.view().map(Message::TagSelectorMessage);
+
         let mut form = Column::new()
             .padding(20)
             .spacing(20)
-            .push(header)
-            .push(image_info)
+            .push(header_row)
             .push(
                 text_input(t!("register_input.description").as_ref(), &self.description)
                     .style(Modern::text_input())
@@ -170,38 +173,36 @@ impl Update {
             .push(Text::new("Tags:"))
             .push(tags_view);
 
-        // Verifica se houve mudanças
+        // Check for changes
         let description_changed = self.description != self.original_description;
         let tags_changed = self.tag_selector.selected_tags() != self.image_dto.tags;
         let has_changes = description_changed || tags_changed;
 
-        // Verifica se os campos obrigatórios estão preenchidos
+        // Check if required fields are filled
         let description_valid = !self.description.trim().is_empty();
         let tags_valid = !self.tag_selector.selected.is_empty();
 
         let ready = has_changes && description_valid && tags_valid && self.tags_loaded;
 
-        // Botões de ação
-        let button_row = Column::new().spacing(10);
+        // Action button - always visible but conditionally enabled/disabled
+        let mut save_button = Button::new(Text::new(t!("update.button.save")));
 
-        let button_row = if ready {
-            button_row.push(
-                Button::new(Text::new(t!("update.button.save")))
-                    .on_press(Message::Submit {
-                        description: self.description.clone(),
-                        tags: self.tag_selector.selected_tags(),
-                    })
-                    .style(Modern::primary_button()),
-            )
+        if ready {
+            save_button = save_button
+                .on_press(Message::Submit {
+                    description: self.description.clone(),
+                    tags: self.tag_selector.selected_tags(),
+                })
+                .style(Modern::primary_button());
         } else {
-            button_row.push(
-                Button::new(Text::new(t!("update.button.save"))).style(Modern::secondary_button()),
-            )
-        };
+            save_button = save_button.style(Modern::secondary_button());
+        }
+
+        let button_row = Column::new().spacing(10).push(save_button);
 
         form = form.push(button_row);
 
-        // Informações sobre mudanças
+        // Changes information
         if has_changes {
             let mut changes_info = Column::new().spacing(5);
 
