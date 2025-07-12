@@ -9,7 +9,7 @@ use iced::widget::{Button, Column, Container, Image, Row, Space, Text, button, t
 use iced::{Alignment, Element, Length, Task};
 use iced_font_awesome::fa_icon;
 use iced_modern_theme::Modern;
-use log::{error, info};
+use log::{error};
 use std::collections::HashSet;
 
 pub enum Action {

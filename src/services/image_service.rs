@@ -24,19 +24,19 @@ pub async fn insert_image(desc: &str) -> Result<i64, DbErr> {
 pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<ImageDTO>, DbErr> {
     let db = get_connection().await?;
 
-    // Verificar se temos filtros para aplicar
+    // Verify if we have a query
     let has_query = !filter.query.trim().is_empty();
     let has_tags = !filter.tags.is_empty();
 
-    // Se não há filtros, buscar todas as imagens
+    // If we don't have a query or tags, just return all
     if !has_query && !has_tags {
         return find_all_images_without_filter(page, size, filter, &db).await;
     }
 
-    // Query base para imagens
+    // Base query for images
     let mut query = image::Entity::find();
 
-    // Se temos filtro por tags, fazemos join
+    // If we have a query, apply it
     if has_tags {
         let tag_count = filter.tags.len() as i64;
 
@@ -48,12 +48,12 @@ pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<Image
             .having(Expr::col(tag::Column::Name).count().eq(tag_count));
     }
 
-    // Aplicar condição de descrição se existe
+    // Apply conditions to query
     if let Some(desc_cond) = build_desc_condition(&filter.query) {
         query = query.filter(desc_cond);
     }
 
-    // Contagem total para paginação
+    // Count total
     let total_count = query
         .clone()
         .select_only()
@@ -74,15 +74,8 @@ pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<Image
         query = query.order_by(image::Column::CreatedAt, Order::Asc);
     }
 
-    // Buscar imagens paginadas
+    // Search for images
     let images = query
-        .select_only()
-        .columns([
-            image::Column::Id,
-            image::Column::Path,
-            image::Column::ThumbnailPath,
-            image::Column::Description,
-        ])
         .distinct()
         .limit(size)
         .offset(page * size)
@@ -90,12 +83,12 @@ pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<Image
         .all(&db)
         .await?;
 
-    // Buscar tags para essas imagens
+    // Search for tags for each image
     let image_ids: Vec<i64> = images.iter().map(|img| img.id).collect();
 
     let image_tags = get_tags_for_images(&image_ids, &db).await?;
 
-    // Agrupar tags por image_id
+    // Group tags by image
     let mut tags_map: HashMap<i64, HashSet<String>> = HashMap::new();
     for (image_id, tag_name) in image_tags {
         tags_map.entry(image_id).or_default().insert(tag_name);
@@ -116,7 +109,8 @@ async fn find_all_images_without_filter(
     filter: Filter,
     db: &DatabaseConnection,
 ) -> Result<Page<ImageDTO>, DbErr> {
-    // Contagem total
+
+    // Count total
     let total_count = image::Entity::find().count(db).await?;
     let total_pages = if total_count == 0 {
         0
@@ -124,29 +118,26 @@ async fn find_all_images_without_filter(
         (total_count + size - 1) / size
     };
 
-    // 1. Comece seu builder sem WHERE nem select_only
     let mut query = image::Entity::find()
         .limit(size)
         .offset(page * size);
 
-    // 2. Aplique o ORDER BY de acordo com o filtro
     query = if filter.sort_order == SortOrder::CreatedDesc {
         query.order_by(image::Column::CreatedAt, Order::Desc)
     } else {
         query.order_by(image::Column::CreatedAt, Order::Asc)
     };
 
-    // 3. Execute a consulta
     let images: Vec<Model> = query
         .all(db)
         .await?;
 
-    // Buscar tags para essas imagens
+    // Search for tags for each image
     let image_ids: Vec<i64> = images.iter().map(|img| img.id).collect();
 
     let image_tags = get_tags_for_images(&image_ids, db).await?;
 
-    // Agrupar tags por image_id
+    // Group tags by image
     let mut tags_map: HashMap<i64, HashSet<String>> = HashMap::new();
     for (image_id, tag_name) in image_tags {
         tags_map.entry(image_id).or_default().insert(tag_name);
@@ -184,7 +175,7 @@ pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbEr
     // Converte para ActiveModel
     let mut active_model: ActiveModel = existing_model.into();
 
-    // Atualiza apenas os campos que não estão vazios
+    // Update fields
     if let Some(path) = dto.path {
         if !path.is_empty() {
             active_model.path = Set(path);
@@ -203,10 +194,10 @@ pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbEr
         }
     }
 
-    // Atualiza no banco de dados
+    // Update
     let updated_model = active_model.update(&db).await?;
 
-    // Se tags foram fornecidas, atualiza as tags também
+    // If tags exists, update them
     if let Some(tags) = dto.tags {
         if !tags.is_empty() {
             update_tags(&db, id, tags).await?;
