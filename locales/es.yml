@@ -6,7 +6,7 @@ search:
     search: "Buscar"
     register: "Registrar"
   input:
-    description: "Escribe la descripción"
+    description: "Ingrese la descripción"
 
 register:
   tooltip:
@@ -22,8 +22,8 @@ update:
     save: "Guardar"
   tooltip:
     current_image: "Imagen Actual"
-    description: "La descripción será actualizada"
-    tags: "Las etiquetas serán actualizadas"
+    description: "La descripción será modificada"
+    tags: "Las etiquetas serán modificadas"
 
 preferences:
   title: "Preferencias"
@@ -32,8 +32,8 @@ preferences:
     theme: "Tema:"
     items_per_page: "Ítems por página (1-100):"
   select:
-    language: "Selecciona un idioma"
-    theme: "Selecciona un tema"
+    language: "Seleccione un idioma"
+    theme: "Seleccione un tema"
 
 navbar:
   button:
@@ -41,28 +41,46 @@ navbar:
     search: "Buscar Imágenes"
     register: "Registrar"
     workspace: "Espacio de Trabajo"
+    manage_tags: "Gestionar Etiquetas"
     settings: "Configuraciones"
 
   tooltip:
     edit_image: "Editar Imagen"
 
+manage_tags:
+  button:
+    add: "Agregar Etiqueta"
+    save: "Guardar"
+    delete: "Eliminar Etiqueta"
+    edit: "Editar Etiqueta"
+    cancel: "Cancelar"
+  input:
+    description: "Nombre de la Etiqueta"
+
 message:
   copy:
     success: "Imagen copiada al portapapeles"
-    error: "Error al copiar la imagen al portapapeles"
+    error: "Error al copiar imagen al portapapeles"
   register:
     success: "Imagen registrada con éxito"
-    error: "Error al registrar la imagen"
+    error: "Error al registrar imagen"
   update:
     success: "Imagen actualizada con éxito"
-    error: "Error al actualizar la imagen"
+    error: "Error al actualizar imagen"
   delete:
     success: "Imagen eliminada con éxito"
-    error: "Error al eliminar la imagen"
+    error: "Error al eliminar imagen"
   tag:
     new: "+ Nueva Etiqueta"
-    success: "Etiqueta añadida con éxito"
-    error: "Error al añadir la etiqueta"
+    success: "Etiqueta agregada con éxito"
+    error: "Error al agregar etiqueta"
   open:
     success: "Imagen abierta con éxito"
-    error: "Error al abrir la imagen"
+    error: "Error al abrir imagen"
+  manage_tags:
+    delete:
+      success: "Etiqueta eliminada con éxito"
+      error: "Error al eliminar etiqueta"
+    update:
+      success: "Etiquetas actualizadas con éxito"
+      error: "Error al actualizar etiquetas"

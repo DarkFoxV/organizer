@@ -2,7 +2,9 @@ use log::{error, info};
 use migration::Migrator;
 use sea_orm_migration::MigratorTrait;
 use std::{error::Error, fs, path::Path, time::Instant};
+use std::path::PathBuf;
 use crate::services::connection_db::get_connection;
+use crate::utils::get_exe_dir;
 
 pub async fn run_migrations_safe(db: &sea_orm::DatabaseConnection) -> Result<(), Box<dyn Error>> {
     info!("Iniciando verificação de migrações...");
@@ -77,14 +79,19 @@ pub async fn prepare_database() -> Result<(), Box<dyn Error>> {
 }
 
 pub async fn backup_database() -> Result<(), Box<dyn Error>> {
-    let db_path = "organizer.db";
-    if Path::new(db_path).exists() {
+    let exe_dir = get_exe_dir();
+    let db_path: PathBuf = exe_dir.join("organizer.db");
+
+    if db_path.exists() {
         let backup_path = format!(
             "database_backup_{}.db",
             chrono::Utc::now().format("%Y%m%d_%H%M%S")
         );
-        fs::copy(db_path, &backup_path)?;
-        info!("Backup criado: {}", backup_path);
+        fs::copy(&db_path, &backup_path)?;
+        info!("Backup created: {}", backup_path);
+    } else {
+        info!("Database file not found at {:?}", db_path);
     }
+
     Ok(())
 }

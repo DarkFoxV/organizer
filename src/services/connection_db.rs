@@ -1,5 +1,5 @@
-use crate::config::get_exe_dir;
 use sea_orm::{Database, DatabaseConnection, DbErr};
+use crate::utils::get_exe_dir;
 
 pub async fn get_connection() -> Result<DatabaseConnection, DbErr> {
     // Get the directory of the executable

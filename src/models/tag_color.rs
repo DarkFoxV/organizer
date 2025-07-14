@@ -1,6 +1,8 @@
-use sea_orm::entity::prelude::*;
-use sea_orm::Iterable;
+use iced::Color;
 use sea_orm::EnumIter;
+use sea_orm::Iterable;
+use sea_orm::entity::prelude::*;
+use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, DeriveActiveEnum, EnumIter)]
 #[sea_orm(rs_type = "String", db_type = "Text")]
@@ -13,8 +15,10 @@ pub enum TagColor {
     Blue,
     #[sea_orm(string_value = "orange")]
     Orange,
-    #[sea_orm(string_value = "white")]
-    White,
+    #[sea_orm(string_value = "purple")]
+    Purple,
+    #[sea_orm(string_value = "pink")]
+    Pink,
 }
 
 impl Default for TagColor {
@@ -30,7 +34,8 @@ impl TagColor {
             TagColor::Green => "green",
             TagColor::Blue => "blue",
             TagColor::Orange => "orange",
-            TagColor::White => "white",
+            TagColor::Purple => "purple",
+            TagColor::Pink => "pink",
         }
     }
 
@@ -40,12 +45,28 @@ impl TagColor {
             "green" => Some(TagColor::Green),
             "blue" => Some(TagColor::Blue),
             "orange" => Some(TagColor::Orange),
-            "white" => Some(TagColor::White),
+            "purple" => Some(TagColor::Purple),
+            "pink" => Some(TagColor::Pink),
             _ => None,
         }
     }
 
     pub fn all() -> Vec<TagColor> {
         TagColor::iter().collect()
+    }
+
+}
+
+impl fmt::Display for TagColor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            TagColor::Red => "Red",
+            TagColor::Green => "Green",
+            TagColor::Blue => "Blue",
+            TagColor::Orange => "Orange",
+            TagColor::Purple => "Purple",
+            TagColor::Pink => "Pink",
+        };
+        write!(f, "{}", s)
     }
 }

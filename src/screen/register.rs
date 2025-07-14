@@ -49,7 +49,7 @@ pub struct Register {
 
 impl Register {
     pub fn new(dynamic_image: Option<DynamicImage>) -> (Self, Task<Message>) {
-        let tag_selector = TagSelector::new(Vec::new(), true);
+        let tag_selector = TagSelector::new(Vec::new(), true, false);
         let image_handle = dynamic_image.as_ref().map(|img| dynamic_image_to_rgba(img));
         (
             Self {

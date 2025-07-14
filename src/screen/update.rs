@@ -45,7 +45,7 @@ impl Update {
         let description = image_dto.description.clone();
         let original_description = image_dto.description.clone();
 
-        let tag_selector = TagSelector::new(Vec::new(), true);
+        let tag_selector = TagSelector::new(Vec::new(), true, false);
         let update = Update {
             tag_selector,
             image_dto,

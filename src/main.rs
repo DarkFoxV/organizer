@@ -6,6 +6,7 @@ mod dtos;
 mod models;
 mod screen;
 mod services;
+mod utils;
 
 use crate::components::navbar::{NavButton, Navbar};
 use crate::components::toast_view::ToastView;
@@ -14,7 +15,7 @@ use crate::config::get_settings;
 use crate::dtos::image_dto::ImageDTO;
 use crate::models::toast::Toast;
 use crate::screen::update::Update;
-use crate::screen::{Preferences, preferences, search};
+use crate::screen::{ManageTags, Preferences, manage_tags, preferences, search};
 use crate::screen::{Register, Screen, Search};
 use crate::screen::{register, update};
 use crate::services::{clipboard_service, database_service, logger_service, toast_service};
@@ -44,6 +45,7 @@ pub enum Message {
     PasteShortcut,
     Navigate(NavigationTarget),
     NoOps,
+    ManageTags(manage_tags::Message),
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +54,7 @@ pub enum NavigationTarget {
     Register(Option<DynamicImage>),
     Update(ImageDTO),
     Preferences,
+    ManageTags,
 }
 
 pub struct Organizer {
@@ -123,6 +126,12 @@ impl Organizer {
                 self.screen = Screen::Preferences(preferences);
                 self.navbar.selected = NavButton::Preferences;
                 task.map(Message::Preferences)
+            }
+            NavigationTarget::ManageTags => {
+                let (manage_tags, task) = ManageTags::new();
+                self.screen = Screen::ManageTags(manage_tags);
+                self.navbar.selected = NavButton::ManageTags;
+                task.map(Message::ManageTags)
             }
         }
     }
@@ -260,6 +269,7 @@ impl Organizer {
                             NavButton::Home | NavButton::Search => NavigationTarget::Search,
                             NavButton::Workspace => NavigationTarget::Register(None),
                             NavButton::Preferences => NavigationTarget::Preferences,
+                            NavButton::ManageTags => NavigationTarget::ManageTags,
                         };
                         self.navigate_to(target)
                     }
@@ -280,6 +290,18 @@ impl Organizer {
             }
 
             Message::NoOps => Task::none(),
+            Message::ManageTags(message) => {
+                if let Screen::ManageTags(manage_tags) = &mut self.screen {
+                    let action = manage_tags.update(message);
+
+                    match action {
+                        manage_tags::Action::None => Task::none(),
+                        manage_tags::Action::Run(task) => task.map(Message::ManageTags),
+                    }
+                } else {
+                    Task::none()
+                }
+            }
         }
     }
 
@@ -334,6 +356,7 @@ impl Organizer {
             Screen::Register(register) => register.view().map(Message::Register),
             Screen::Update(update) => update.view().map(Message::Update),
             Screen::Preferences(preferences) => preferences.view().map(Message::Preferences),
+            Screen::ManageTags(manage_tags) => manage_tags.view().map(Message::ManageTags),
         };
 
         let layout = Row::new().push(navbar).push(content);

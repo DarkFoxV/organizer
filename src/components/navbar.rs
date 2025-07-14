@@ -1,10 +1,10 @@
+use crate::config::Settings;
 use iced::alignment::Horizontal;
-use iced::widget::{Column, button, container, text, scrollable};
+use iced::widget::{Column, button, container, scrollable, text};
 use iced::{Element, Length, Task};
 use iced_modern_theme::Modern;
 use log::info;
 use rust_i18n::t;
-use crate::config::Settings;
 
 pub enum Action {
     Run(Task<Message>),
@@ -17,6 +17,7 @@ pub enum NavButton {
     Home,
     Search,
     Workspace,
+    ManageTags,
     Preferences,
 }
 
@@ -50,13 +51,12 @@ impl Navbar {
             Message::ButtonPressed(id) => {
                 self.selected = id;
                 Action::Navigate(id)
-            },
+            }
             Message::NoOps => {
                 self.settings = Settings::load();
                 info!("navbar update ");
                 Action::None
             }
-
         }
     }
 
@@ -95,6 +95,12 @@ impl Navbar {
                 NavButton::Workspace,
                 self.selected,
             ))
+            .spacing(5)
+            .push(styled_button(
+                t!("navbar.button.manage_tags").to_string(),
+                NavButton::ManageTags,
+                self.selected,
+            ))
             .spacing(5);
 
         let empty_middle = scrollable(Column::new().push(text("").size(1)))
@@ -107,11 +113,11 @@ impl Navbar {
                     .width(Length::Fill)
                     .align_x(Horizontal::Center),
             )
-                .width(Length::Fill)
-                .height(Length::Fixed(45.0))
-                .padding(10)
-                .on_press(Message::ButtonSignal(NavButton::Preferences))
-                .style(Modern::blue_tinted_button()),
+            .width(Length::Fill)
+            .height(Length::Fixed(45.0))
+            .padding(10)
+            .on_press(Message::ButtonSignal(NavButton::Preferences))
+            .style(Modern::blue_tinted_button()),
         );
 
         let layout = Column::new()

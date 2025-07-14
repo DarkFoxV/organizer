@@ -70,7 +70,7 @@ impl Search {
             Self {
                 query: String::new(),
                 images: vec![],
-                tag_selector: TagSelector::new(Vec::new(), false),
+                tag_selector: TagSelector::new(Vec::new(), false, true),
                 page_size,
                 current_page: 0,
                 total_pages: 0,

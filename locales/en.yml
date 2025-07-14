@@ -6,7 +6,7 @@ search:
     search: "Search"
     register: "Register"
   input:
-    description: "Type a description"
+    description: "Enter description"
 
 register:
   tooltip:
@@ -22,8 +22,8 @@ update:
     save: "Save"
   tooltip:
     current_image: "Current Image"
-    description: "Description will be updated"
-    tags: "Tags will be updated"
+    description: "Description will be changed"
+    tags: "Tags will be changed"
 
 preferences:
   title: "Preferences"
@@ -41,28 +41,46 @@ navbar:
     search: "Search Images"
     register: "Register"
     workspace: "Workspace"
+    manage_tags: "Manage Tags"
     settings: "Settings"
-    add_image: "Add Image"
+
   tooltip:
     edit_image: "Edit Image"
+
+manage_tags:
+  button:
+    add: "Add Tag"
+    save: "Save"
+    delete: "Delete Tag"
+    edit: "Edit Tag"
+    cancel: "Cancel"
+  input:
+    description: "Tag Name"
 
 message:
   copy:
     success: "Image copied to clipboard"
-    error: "Failed to copy image to clipboard"
+    error: "Error copying image to clipboard"
   register:
-    success: "Image successfully registered"
-    error: "Failed to register image"
+    success: "Image registered successfully"
+    error: "Error registering image"
   update:
-    success: "Image successfully updated"
-    error: "Failed to update image"
+    success: "Image updated successfully"
+    error: "Error updating image"
   delete:
-    success: "Image successfully deleted"
-    error: "Failed to delete image"
+    success: "Image deleted successfully"
+    error: "Error deleting image"
   tag:
-    new: "+ New tag"
-    success: "Tag successfully added"
-    error: "Failed to add tag"
+    new: "+ New Tag"
+    success: "Tag added successfully"
+    error: "Error adding tag"
   open:
-    success: "Image successfully opened"
-    error: "Failed to open image"
+    success: "Image opened successfully"
+    error: "Error opening image"
+  manage_tags:
+    delete:
+      success: "Tag deleted successfully"
+      error: "Error deleting tag"
+    update:
+      success: "Tags updated successfully"
+      error: "Error updating tags"

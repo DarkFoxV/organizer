@@ -7,7 +7,7 @@ search:
     register: "Registrar"
   input:
     description: "Digite a descrição"
-    
+
 register:
   tooltip:
     select_image: "Nenhuma imagem selecionada"
@@ -41,10 +41,21 @@ navbar:
     search: "Buscar Imagens"
     register: "Registrar"
     workspace: "Espaço de Trabalho"
+    manage_tags: "Gerenciar Tags"
     settings: "Configurações"
 
   tooltip:
     edit_image: "Editar Imagem"
+
+manage_tags:
+  button:
+    add: "Adicionar Tag"
+    save: "Salvar"
+    delete: "Excluir Tag"
+    edit: "Editar Tag"
+    cancel: "Cancelar"
+  input:
+    description: "Nome da Tag"
 
 message:
   copy:
@@ -66,3 +77,10 @@ message:
   open:
     success: "Imagem aberta com sucesso"
     error: "Erro ao abrir imagem"
+  manage_tags:
+    delete:
+      success: "Tag excluida com sucesso"
+      error: "Erro ao excluir tag"
+    update:
+      success: "Tags atualizadas com sucesso"
+      error: "Erro ao atualizar tags"

@@ -5,7 +5,7 @@ use crate::models::image::{ActiveModel, Entity, Model};
 use crate::models::page::Page;
 use crate::models::{image, image_tag, tag};
 use crate::services::connection_db::get_connection;
-use crate::services::tag_service::{get_tags_for_images, update_tags};
+use crate::services::tag_service::{get_tags_for_images, update_tags_for_image};
 use sea_orm::{prelude::*, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, InsertResult, JoinType, Order, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait};
 use log::info;
 use crate::dtos::tag_dto::TagDTO;
@@ -135,7 +135,6 @@ async fn find_all_images_without_filter(
 
     let dtos = to_dto(images, tags_map);
 
-    info!("Found {:?} images", dtos);
     Ok(Page {
         content: dtos,
         total_pages,
@@ -185,7 +184,7 @@ pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbEr
 
     if let Some(tags) = dto.tags {
         if !tags.is_empty() {
-            update_tags(&db, id, tags).await?;
+            update_tags_for_image(&db, id, tags).await?;
         }
     }
 

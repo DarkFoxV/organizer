@@ -2,8 +2,9 @@ use crate::dtos::tag_dto::TagDTO;
 use crate::models::tag_color::TagColor;
 use crate::services::tag_service;
 use crate::services::toast_service::{push_error, push_success};
+use crate::utils::capitalize_first;
 use iced::widget::{Button, Container, Row, Text, text_input};
-use iced::{Alignment, Element, Length, Task};
+use iced::{Alignment, Element, Length, Task, Theme};
 use iced_font_awesome::fa_icon;
 use iced_modern_theme::Modern;
 use log::info;
@@ -26,16 +27,18 @@ pub struct TagSelector {
     show_add_tag_button: bool,
     show_new_tag_input: bool,
     new_tag_name: String,
+    colorized: bool,
 }
 
 impl TagSelector {
-    pub fn new(available: Vec<TagDTO>, show_add_tag_button: bool) -> Self {
+    pub fn new(available: Vec<TagDTO>, show_add_tag_button: bool, colorized: bool) -> Self {
         Self {
             selected: HashSet::new(),
             available,
             show_add_tag_button,
             show_new_tag_input: false,
             new_tag_name: String::new(),
+            colorized,
         }
     }
 
@@ -101,18 +104,45 @@ impl TagSelector {
 
         for tag in &self.available {
             let selected = self.selected.contains(tag);
-            let label = Self::capitalize_first(&tag.name);
-            let button = if selected {
-                Button::new(Text::new(label))
-                    .style(Modern::green_tinted_button())
-                    .padding(5)
-                    .on_press(Message::ToggleTag(tag.clone()))
+            let label = capitalize_first(&tag.name);
+
+            let style: Box<
+                dyn for<'a> Fn(
+                        &'a Theme,
+                        iced::widget::button::Status,
+                    ) -> iced::widget::button::Style
+                    + '_,
+            > = if !selected && self.colorized {
+                match tag.color {
+                    TagColor::Red => Box::new(Modern::red_tinted_button()),
+                    TagColor::Green => Box::new(Modern::green_tinted_button()),
+                    TagColor::Blue => Box::new(Modern::blue_tinted_button()),
+                    TagColor::Orange => Box::new(Modern::orange_tinted_button()),
+                    TagColor::Purple => Box::new(Modern::purple_tinted_button()),
+                    TagColor::Pink => Box::new(Modern::pink_tinted_button()),
+                }
+            } else if selected && self.colorized {
+                match tag.color {
+                    TagColor::Red => Box::new(Modern::danger_button()),
+                    TagColor::Green => Box::new(Modern::success_button()),
+                    TagColor::Blue => Box::new(Modern::primary_button()),
+                    TagColor::Orange => Box::new(Modern::warning_button()),
+                    TagColor::Purple => Box::new(Modern::purple_button()),
+                    TagColor::Pink => Box::new(Modern::pink_button()),
+                }
             } else {
-                Button::new(Text::new(label))
-                    .style(Modern::blue_tinted_button())
-                    .padding(5)
-                    .on_press(Message::ToggleTag(tag.clone()))
+                if selected {
+                    Box::new(Modern::primary_button())
+                } else {
+                    Box::new(Modern::blue_tinted_button())
+                }
             };
+
+            let button = Button::new(Text::new(label))
+                .style(style)
+                .padding(5)
+                .on_press(Message::ToggleTag(tag.clone()));
+
             row = row.push(button);
         }
 
@@ -154,13 +184,5 @@ impl TagSelector {
 
     pub fn selected_tags(&self) -> HashSet<TagDTO> {
         self.selected.iter().cloned().collect()
-    }
-
-    fn capitalize_first(s: &str) -> String {
-        let mut chars = s.chars();
-        match chars.next() {
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            None => String::new(),
-        }
     }
 }
