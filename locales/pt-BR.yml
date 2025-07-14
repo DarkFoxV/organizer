@@ -7,6 +7,9 @@ search:
     register: "Registrar"
   input:
     description: "Digite a descrição"
+  order:
+    newest: "Mais recente"
+    oldest: "Mais antigo"
 
 register:
   tooltip:

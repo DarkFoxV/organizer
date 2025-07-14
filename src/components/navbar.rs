@@ -73,7 +73,7 @@ impl Navbar {
                 .on_press(Message::ButtonSignal(id));
 
             if id == selected {
-                base.style(Modern::green_tinted_button())
+                base.style(Modern::primary_button())
             } else {
                 base.style(Modern::blue_tinted_button())
             }
@@ -108,16 +108,13 @@ impl Navbar {
             .height(Length::Fill);
 
         let settings_button = Column::new().push(
-            button(
-                text(t!("navbar.button.settings"))
-                    .width(Length::Fill)
-                    .align_x(Horizontal::Center),
+            styled_button(
+                t!("navbar.button.settings").to_string(),
+                NavButton::Preferences,
+                self.selected,
             )
-            .width(Length::Fill)
-            .height(Length::Fixed(45.0))
             .padding(10)
-            .on_press(Message::ButtonSignal(NavButton::Preferences))
-            .style(Modern::blue_tinted_button()),
+            .on_press(Message::ButtonSignal(NavButton::Preferences)),
         );
 
         let layout = Column::new()

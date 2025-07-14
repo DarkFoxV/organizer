@@ -38,7 +38,7 @@ pub enum Message {
     PushContainer(Vec<ImageDTO>, u64, u64),
     OpenImage(i64),
     OpenLocalImage(i64),
-    DeleteImage(i64),
+    DeleteImage(ImageDTO),
     CopyImage(String),
     TagsLoaded(Vec<TagDTO>),
     GoToPage(u64),
@@ -172,12 +172,12 @@ impl Search {
                 Action::Run(task)
             }
 
-            Message::DeleteImage(id) => {
-                self.images.retain(|img| img.id != id);
+            Message::DeleteImage(dto) => {
+                self.images.retain(|img| img.id != dto.id);
                 let task = Task::perform(
                     async move {
-                        image_service::delete_image(id).await.unwrap();
-                        let _ = file_service::delete_image(id);
+                        file_service::delete_image_by_path(&dto.path).await.unwrap();
+                        image_service::delete_image(dto.id).await.unwrap();
                     },
                     |_| {
                         push_success(t!("message.delete.success"));

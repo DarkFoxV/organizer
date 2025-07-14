@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fmt;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]  // <-- adicione Copy e Eq
+#[derive(Copy, Clone, Debug, PartialEq, Eq)] // <-- adicione Copy e Eq
 pub enum SortOrder {
     CreatedAsc,
     CreatedDesc,
@@ -10,8 +10,8 @@ pub enum SortOrder {
 impl fmt::Display for SortOrder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SortOrder::CreatedAsc  => write!(f, "Oldest first"),
-            SortOrder::CreatedDesc => write!(f, "Newest first"),
+            SortOrder::CreatedAsc => write!(f, "{}", t!("search.order.oldest")),
+            SortOrder::CreatedDesc => write!(f, "{}", t!("search.order.newest")),
         }
     }
 }

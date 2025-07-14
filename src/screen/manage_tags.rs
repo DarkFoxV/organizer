@@ -3,11 +3,11 @@ use crate::models::tag_color::TagColor;
 use crate::services::tag_service;
 use crate::services::toast_service::{push_error, push_success};
 use crate::utils::capitalize_first;
-use iced::widget::{button, column, container, pick_list, row, scrollable, text, text_input, Text};
+use iced::widget::{Text, button, column, container, pick_list, row, scrollable, text, text_input};
 use iced::{Alignment, Element, Length, Task};
 use iced_modern_theme::Modern;
-use std::collections::HashMap;
 use log::{debug, error};
+use std::collections::HashMap;
 
 pub enum Action {
     None,
@@ -165,11 +165,11 @@ impl ManageTags {
                 description_label.as_ref(),
                 capitalize_first(&edit.name).as_str(),
             )
-
             .on_input(move |s| Message::NameChanged(tag_id, s))
             .padding(8)
             .size(16)
             .on_submit(Message::SubmitTag(tag_id))
+            .style(Modern::text_input())
             .into()
         } else {
             text(capitalize_first(&tag.name)).size(18).into()

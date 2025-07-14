@@ -5,6 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::env;
+use log::{debug, info, warn};
 use crate::services::image_service;
 // ===================================
 //         UTILITY FUNCTIONS
@@ -46,21 +47,26 @@ pub fn save_image_file_with_thumbnail(
     ))
 }
 
-pub async fn delete_image(id: i64) -> Result<(), io::Error> {
-    let image = image_service::find_by_id(id)
-        .await
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Image not found"))?;
+pub async fn delete_image_by_path(path: &str) -> Result<(), io::Error> {
+    let image_path = Path::new(path);
+    info!("Deleting image by path: {}", image_path.display());
 
-    let image_path = Path::new(&image.path);
-    if let Some(image_dir) = image_path.parent() {
-        if image_dir.exists() {
-            fs::remove_dir_all(image_dir)?;
+    if let Some(parent_dir) = image_path.parent() {
+        if parent_dir.exists() {
+            info!("Deleting entire directory: {}", parent_dir.display());
+            fs::remove_dir_all(parent_dir)?;
+            info!("Successfully deleted directory: {}", parent_dir.display());
+        } else {
+            warn!("Parent directory does not exist: {}", parent_dir.display());
         }
+    } else {
+        warn!("Could not determine parent directory for: {}", image_path.display());
     }
 
+    info!("File deletion completed for path: {}", path);
     Ok(())
 }
+
 
 pub fn open_in_file_explorer(path: &Path) -> io::Result<()> {
     if !path.exists() {

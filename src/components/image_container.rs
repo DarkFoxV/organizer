@@ -44,7 +44,7 @@ impl ImageContainer {
                 )
                 .style(Modern::danger_button())
                 .width(Length::FillPortion(1))
-                .on_press(Message::DeleteImage(self.id)),
+                .on_press(Message::DeleteImage(self.image_dto.clone())),
             )
             .push(
                 Button::new(
