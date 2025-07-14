@@ -6,7 +6,7 @@ use iced::widget::image::Handle;
 use iced::widget::{Button, Column, Container, Image, Row, Scrollable, Text};
 use iced_font_awesome::fa_icon_solid;
 use iced_modern_theme::Modern;
-use crate::models::image_dto::ImageDTO;
+use crate::dtos::image_dto::ImageDTO;
 
 #[derive(Debug, Clone)]
 pub struct ImageContainer {
@@ -74,7 +74,7 @@ impl ImageContainer {
                 )
                 .style(Modern::warning_button())
                 .width(Length::FillPortion(1))
-                .on_press(Message::Update(self.id)),
+                .on_press(Message::Update(self.image_dto.clone())),
             )
             .push(
                 Button::new(

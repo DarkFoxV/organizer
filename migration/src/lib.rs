@@ -1,6 +1,7 @@
 mod m2025701_000001_create_images_table;
 mod m2025701_000002_create_tags_table;
 mod m2025701_000003_create_image_tags_table;
+mod m20257013_000003_alter_tags_table;
 
 use sea_orm_migration::prelude::*;
 
@@ -13,6 +14,7 @@ impl MigratorTrait for Migrator {
             Box::new(m2025701_000001_create_images_table::Migration),
             Box::new(m2025701_000002_create_tags_table::Migration),
             Box::new(m2025701_000003_create_image_tags_table::Migration),
+            Box::new(m20257013_000003_alter_tags_table::Migration),
         ]
     }
 }

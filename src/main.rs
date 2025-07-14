@@ -2,6 +2,7 @@
 extern crate rust_i18n;
 mod components;
 mod config;
+mod dtos;
 mod models;
 mod screen;
 mod services;
@@ -10,17 +11,19 @@ use crate::components::navbar::{NavButton, Navbar};
 use crate::components::toast_view::ToastView;
 use crate::components::{navbar, toast_view};
 use crate::config::get_settings;
+use crate::dtos::image_dto::ImageDTO;
 use crate::models::toast::Toast;
 use crate::screen::update::Update;
 use crate::screen::{Preferences, preferences, search};
 use crate::screen::{Register, Screen, Search};
 use crate::screen::{register, update};
-use crate::services::{database_service, logger_service, toast_service};
+use crate::services::{clipboard_service, database_service, logger_service, toast_service};
 use iced::event;
 use iced::keyboard;
 use iced::widget::{Column, Row, container, stack};
 use iced::{Alignment, Element, Event, Length, Subscription, Task, Theme, time};
 use iced_modern_theme::Modern;
+use image::DynamicImage;
 use log::info;
 use std::time::{Duration, Instant};
 
@@ -39,7 +42,16 @@ pub enum Message {
     HandleToast(Toast),
     EscapePressed,
     PasteShortcut,
+    Navigate(NavigationTarget),
     NoOps,
+}
+
+#[derive(Debug, Clone)]
+pub enum NavigationTarget {
+    Search,
+    Register(Option<DynamicImage>),
+    Update(ImageDTO),
+    Preferences,
 }
 
 pub struct Organizer {
@@ -54,11 +66,8 @@ impl Organizer {
         let (search, search_task) = Search::new();
         let task = search_task.map(Message::Search);
         let settings = get_settings();
-        let theme = if settings.config.theme == "Dark" {
-            Modern::dark_theme()
-        } else {
-            Modern::light_theme()
-        };
+        let theme = Self::get_theme_from_settings(&settings);
+
         (
             Self {
                 theme,
@@ -82,13 +91,102 @@ impl Organizer {
         self.theme.clone()
     }
 
+    fn get_theme_from_settings(settings: &config::Settings) -> Theme {
+        match settings.config.theme.as_str() {
+            "Dark" => Modern::dark_theme(),
+            "Light" => Modern::light_theme(),
+            _ => Default::default(),
+        }
+    }
+
+    // Method to navigate to different screens
+    fn navigate_to(&mut self, target: NavigationTarget) -> Task<Message> {
+        match target {
+            NavigationTarget::Search => {
+                let (search, task) = Search::new();
+                self.screen = Screen::Search(search);
+                self.navbar.selected = NavButton::Search;
+                task.map(Message::Search)
+            }
+            NavigationTarget::Register(image) => {
+                let (register, task) = Register::new(image);
+                self.screen = Screen::Register(register);
+                task.map(Message::Register)
+            }
+            NavigationTarget::Update(dto) => {
+                let (update, task) = Update::new(dto);
+                self.screen = Screen::Update(update);
+                task.map(Message::Update)
+            }
+            NavigationTarget::Preferences => {
+                let (preferences, task) = Preferences::new();
+                self.screen = Screen::Preferences(preferences);
+                self.navbar.selected = NavButton::Preferences;
+                task.map(Message::Preferences)
+            }
+        }
+    }
+
+    // Method to handle escape key
+    fn handle_escape(&mut self) -> Task<Message> {
+        match &mut self.screen {
+            Screen::Search(_) => {
+                let msg = Message::Search(search::Message::ClosePreview);
+                Task::perform(async move { msg }, |m| m)
+            }
+            _ => self.navigate_to(NavigationTarget::Search),
+        }
+    }
+
+    // Method to handle paste shortcut
+    fn handle_paste(&mut self) -> Task<Message> {
+        let dynamic_image = clipboard_service::get_clipboard_image();
+
+        if let Some(image) = dynamic_image {
+            match &mut self.screen {
+                Screen::Search(search) => {
+                    info!("Pasting image to search");
+                    let action = search.update(search::Message::ImagePasted(image));
+                    match action {
+                        search::Action::NavigatorToRegister(image) => {
+                            self.navigate_to(NavigationTarget::Register(image))
+                        }
+                        _ => Task::none(),
+                    }
+                }
+                Screen::Register(register) => {
+                    info!("Pasting image to register");
+                    register.update(register::Message::ImagePasted(image));
+                    Task::none()
+                }
+                _ => Task::none(),
+            }
+        } else {
+            Task::none()
+        }
+    }
+
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::Navigate(target) => self.navigate_to(target),
+
             Message::HandleToast(mut toast) => {
                 toast.duration = Duration::from_secs(4);
                 self.toasts.push(ToastView { toast });
                 Task::none()
             }
+
+            Message::SettingsUpdated => {
+                let settings = get_settings();
+                self.theme = Self::get_theme_from_settings(&settings);
+                self.navbar.update(navbar::Message::NoOps);
+                self.navigate_to(NavigationTarget::Preferences)
+            }
+
+            Message::EscapePressed => self.handle_escape(),
+
+            Message::PasteShortcut => self.handle_paste(),
+
             Message::Search(message) => {
                 if let Screen::Search(search) = &mut self.screen {
                     let action = search.update(message);
@@ -97,15 +195,39 @@ impl Organizer {
                         search::Action::None => Task::none(),
                         search::Action::Run(task) => task.map(Message::Search),
                         search::Action::NavigateToUpdate(dto) => {
-                            let (update, task) = Update::new(dto);
-                            self.screen = Screen::Update(update);
-                            task.map(Message::Update)
+                            self.navigate_to(NavigationTarget::Update(dto))
                         }
-                        search::Action::NavigatorToRegister => {
-                            let (register, task) = Register::new();
-                            self.screen = Screen::Register(register);
-                            task.map(Message::Register)
+                        search::Action::NavigatorToRegister(dynamic_image) => {
+                            self.navigate_to(NavigationTarget::Register(dynamic_image))
                         }
+                    }
+                } else {
+                    Task::none()
+                }
+            }
+
+            Message::Register(message) => {
+                if let Screen::Register(register) = &mut self.screen {
+                    let action = register.update(message);
+
+                    match action {
+                        register::Action::None => Task::none(),
+                        register::Action::Run(task) => task.map(Message::Register),
+                        register::Action::GoToSearch => self.navigate_to(NavigationTarget::Search),
+                    }
+                } else {
+                    Task::none()
+                }
+            }
+
+            Message::Update(message) => {
+                if let Screen::Update(update) = &mut self.screen {
+                    let action = update.update(message);
+
+                    match action {
+                        update::Action::None => Task::none(),
+                        update::Action::Run(task) => task.map(Message::Update),
+                        update::Action::GoToSearch => self.navigate_to(NavigationTarget::Search),
                     }
                 } else {
                     Task::none()
@@ -119,8 +241,7 @@ impl Organizer {
                     match action {
                         preferences::Action::None => Task::none(),
                         preferences::Action::UpdateUI() => {
-                            let _ = self.update(Message::SettingsUpdated);
-                            Task::none()
+                            Task::perform(async { Message::SettingsUpdated }, |m| m)
                         }
                     }
                 } else {
@@ -128,73 +249,20 @@ impl Organizer {
                 }
             }
 
-            Message::SettingsUpdated => {
-                let settings = get_settings();
-                self.theme = if settings.config.theme == "Dark" {
-                    Modern::dark_theme()
-                } else {
-                    Modern::light_theme()
-                };
-                self.navbar.update(navbar::Message::NoOps);
-                let (preferences, _task) = Preferences::new();
-                self.screen = Screen::Preferences(preferences);
-
-                Task::none()
-            }
-            Message::Update(message) => {
-                if let Screen::Update(update) = &mut self.screen {
-                    let action = update.update(message);
-
-                    match action {
-                        update::Action::None => Task::none(),
-                        update::Action::Run(task) => task.map(Message::Update),
-                        update::Action::GoToSearch => self.navigate_to_search(),
-                    }
-                } else {
-                    Task::none()
-                }
-            }
-            Message::Register(message) => {
-                if let Screen::Register(register) = &mut self.screen {
-                    let action = register.update(message);
-
-                    match action {
-                        register::Action::None => Task::none(),
-                        register::Action::Run(task) => task.map(Message::Register),
-                        register::Action::GoToSearch => self.navigate_to_search(),
-                    }
-                } else {
-                    Task::none()
-                }
-            }
             Message::Navbar(navbar_msg) => {
                 info!("Navbar message: {:?}", navbar_msg);
                 let action = self.navbar.update(navbar_msg);
 
                 match action {
                     navbar::Action::Run(task) => task.map(Message::Navbar),
-                    navbar::Action::Navigate(id) => match id {
-                        NavButton::Home => {
-                            let (search, task) = Search::new();
-                            self.screen = Screen::Search(search);
-                            task.map(Message::Search)
-                        }
-                        NavButton::Search => {
-                            let (search, task) = Search::new();
-                            self.screen = Screen::Search(search);
-                            task.map(Message::Search)
-                        }
-                        NavButton::Workspace => {
-                            let (register, task) = Register::new();
-                            self.screen = Screen::Register(register);
-                            task.map(Message::Register)
-                        }
-                        NavButton::Preferences => {
-                            let (preferences, task) = Preferences::new();
-                            self.screen = Screen::Preferences(preferences);
-                            task.map(Message::Preferences)
-                        }
-                    },
+                    navbar::Action::Navigate(button) => {
+                        let target = match button {
+                            NavButton::Home | NavButton::Search => NavigationTarget::Search,
+                            NavButton::Workspace => NavigationTarget::Register(None),
+                            NavButton::Preferences => NavigationTarget::Preferences,
+                        };
+                        self.navigate_to(target)
+                    }
                     navbar::Action::None => Task::none(),
                 }
             }
@@ -205,23 +273,13 @@ impl Organizer {
                 });
                 Task::none()
             }
+
             Message::Toast(toast_view::Message::Dismiss(id)) => {
                 self.toasts.retain(|toast| toast.toast.id != Some(id));
                 Task::none()
             }
-            Message::EscapePressed => {
-                let task = match &mut self.screen {
-                    Screen::Search(search) => {
-                        let msg = Message::Search(search::Message::ClosePreview);
-                        Task::perform(async move { msg }, |m| m)
-                    }
-                    _ => self.navigate_to_search(),
-                };
-                task
-            }
 
             Message::NoOps => Task::none(),
-            Message::PasteShortcut => Task::none(),
         }
     }
 
@@ -251,7 +309,7 @@ impl Organizer {
         };
 
         let clipboard_subscription = match &self.screen {
-            Screen::Register(_) => event::listen().map(|event| match event {
+            Screen::Register(_) | Screen::Search(_) => event::listen().map(|event| match event {
                 Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => match key {
                     keyboard::Key::Character(ref c) if c == "v" && modifiers.control() => {
                         Message::PasteShortcut
@@ -294,15 +352,6 @@ impl Organizer {
             .align_y(Alignment::End);
 
         stack![layout, toast_overlay].into()
-    }
-
-    fn navigate_to_search(&mut self) -> Task<Message> {
-        info!("Go to search");
-        let (search, task) = Search::new();
-        self.screen = Screen::Search(search);
-        self.navbar.selected = NavButton::Search;
-        let task = task.map(Message::Search);
-        task
     }
 }
 

@@ -1,4 +1,5 @@
 use sea_orm::entity::prelude::*;
+use crate::models::tag_color::TagColor;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "tags")]
@@ -7,6 +8,7 @@ pub struct Model {
     pub id: i64,
     #[sea_orm(unique)]
     pub name: String,
+    pub color: TagColor,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

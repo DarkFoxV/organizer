@@ -1,6 +1,5 @@
 use crate::components::tag_selector;
 use crate::components::tag_selector::{Message as TagSelectorMessage, TagSelector};
-use crate::models::image_dto::{ImageDTO, ImageUpdateDTO};
 use crate::services::toast_service::{push_error, push_success};
 use crate::services::{image_service, tag_service};
 use iced::alignment::Vertical;
@@ -9,8 +8,10 @@ use iced::widget::{Button, Column, Container, Image, Row, Space, Text, button, t
 use iced::{Alignment, Element, Length, Task};
 use iced_font_awesome::fa_icon;
 use iced_modern_theme::Modern;
-use log::error;
+use log::{error, info};
 use std::collections::HashSet;
+use crate::dtos::image_dto::{ImageDTO, ImageUpdateDTO};
+use crate::dtos::tag_dto::TagDTO;
 
 pub enum Action {
     None,
@@ -21,11 +22,11 @@ pub enum Action {
 #[derive(Debug, Clone)]
 pub enum Message {
     TagSelectorMessage(TagSelectorMessage),
-    TagsLoaded(Vec<String>),
+    TagsLoaded(Vec<TagDTO>),
     DescriptionChanged(String),
     Submit {
         description: String,
-        tags: HashSet<String>,
+        tags: HashSet<TagDTO>,
     },
     NavigateToSearch,
     NoOps,
@@ -44,7 +45,7 @@ impl Update {
         let description = image_dto.description.clone();
         let original_description = image_dto.description.clone();
 
-        let tag_selector = TagSelector::new(Vec::new());
+        let tag_selector = TagSelector::new(Vec::new(), true);
         let update = Update {
             tag_selector,
             image_dto,
@@ -70,6 +71,8 @@ impl Update {
             Message::TagsLoaded(tags) => {
                 self.tag_selector.available = tags;
                 self.tag_selector.selected = self.image_dto.tags.clone();
+                info!("Tags loaded from image: {:?}", self.image_dto.tags);
+                info!("Tags loaded {:?}", self.tag_selector.selected);
                 self.tags_loaded = true;
                 Action::None
             }

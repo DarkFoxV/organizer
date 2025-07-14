@@ -1,92 +1,65 @@
-use crate::services::thumbnail_service::{generate_thumbnail, open_and_fix_image, save_corrected_image};
+use crate::services::thumbnail_service::generate_thumbnail_from_image;
+use image::DynamicImage;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use log::{error};
+use std::env;
+use crate::services::image_service;
+// ===================================
+//         UTILITY FUNCTIONS
+// ===================================
 
 pub fn save_image_file_with_thumbnail(
     id: i64,
-    original_path: &str,
-) -> io::Result<(String, String)> {
-    let images_dir = Path::new("images");
+    image: DynamicImage,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    // Absolute path to the executable
+    let base_dir = env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let images_dir = base_dir.join("images");
     if !images_dir.exists() {
-        fs::create_dir(images_dir)?;
+        fs::create_dir_all(&images_dir)?;
     }
 
     let image_dir = images_dir.join(id.to_string());
     if !image_dir.exists() {
-        fs::create_dir(&image_dir)?;
+        fs::create_dir_all(&image_dir)?;
     }
 
-    let original_path = Path::new(original_path);
-    let filename = original_path
-        .file_name()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid filename"))?;
+    // Save
+    let image_filename = format!("image_{}.png", id);
+    let image_path = image_dir.join(&image_filename);
+    image.save(&image_path)?;
 
-    // Try to open and fix the image if necessary
-    match open_and_fix_image(original_path) {
-        Ok(img) => {
-            // Image was opened (possibly corrected)
-            let filename_str = filename.to_string_lossy();
-            let stem = filename_str.split('.').next().unwrap_or(&filename_str);
+    // Thumbnail
+    let thumb_filename = format!("thumb_image_{}.png", id);
+    let thumb_path = image_dir.join(&thumb_filename);
+    generate_thumbnail_from_image(&image, &thumb_path, 500, 500, 6)?;
 
-            // Save corrected image as PNG
-            let corrected_filename = format!("{}.png", stem);
-            let corrected_path = image_dir.join(corrected_filename);
-
-            save_corrected_image(&img, &corrected_path)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Error saving image: {}", e)))?;
-
-            // Generate thumbnail
-            let thumb_filename = format!("thumb_{}.png", stem);
-            let thumb_path = image_dir.join(thumb_filename);
-
-            generate_thumbnail(&corrected_path, &thumb_path, 500, 500, 6)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Error generating thumbnail: {}", e)))?;
-
-            Ok((
-                corrected_path.to_string_lossy().to_string(),
-                thumb_path.to_string_lossy().to_string(),
-            ))
-        }
-        Err(e) => {
-            // Fallback: try to copy original file anyway
-            error!("Warning: Could not open image with correction: {}. Trying direct copy...", e);
-
-            let new_path = image_dir.join(filename);
-            match fs::copy(original_path, &new_path) {
-                Ok(_) => {
-                    let filename_str = filename.to_string_lossy();
-                    let stem = filename_str.split('.').next().unwrap_or(&filename_str);
-                    let thumb_filename = format!("thumb_{}.png", stem);
-                    let thumb_path = image_dir.join(thumb_filename);
-
-                    // Try to generate thumbnail from original file
-                    match generate_thumbnail(&new_path, &thumb_path, 500, 500, 6) {
-                        Ok(_) => Ok((
-                            new_path.to_string_lossy().to_string(),
-                            thumb_path.to_string_lossy().to_string(),
-                        )),
-                        Err(thumb_err) => Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            format!("Error generating thumbnail: {}", thumb_err)
-                        ))
-                    }
-                }
-                Err(copy_err) => Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Could not process image: {} | Copy error: {}", e, copy_err)
-                ))
-            }
-        }
-    }
+    Ok((
+        image_path.to_string_lossy().to_string(),
+        thumb_path.to_string_lossy().to_string(),
+    ))
 }
 
-pub fn delete_image(id: i64) -> io::Result<()> {
-    let images_dir = Path::new("images");
-    let image_dir = images_dir.join(id.to_string());
-    fs::remove_dir_all(&image_dir)
+pub async fn delete_image(id: i64) -> Result<(), io::Error> {
+    let image = image_service::find_by_id(id)
+        .await
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Image not found"))?;
+
+    let image_path = Path::new(&image.path);
+    if let Some(image_dir) = image_path.parent() {
+        if image_dir.exists() {
+            fs::remove_dir_all(image_dir)?;
+        }
+    }
+
+    Ok(())
 }
 
 pub fn open_in_file_explorer(path: &Path) -> io::Result<()> {
@@ -96,6 +69,7 @@ pub fn open_in_file_explorer(path: &Path) -> io::Result<()> {
             "Path does not exist",
         ));
     }
+
     if cfg!(target_os = "windows") {
         Command::new("explorer").arg(path).spawn()?;
     } else if cfg!(target_os = "linux") {
@@ -103,11 +77,32 @@ pub fn open_in_file_explorer(path: &Path) -> io::Result<()> {
     } else if cfg!(target_os = "macos") {
         Command::new("open").arg(path).spawn()?;
     } else {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Unsupported OS",
-        ));
+        return Err(io::Error::new(io::ErrorKind::Other, "Unsupported OS"));
     }
 
     Ok(())
+}
+
+pub fn is_image_path(path: &str) -> bool {
+    use std::path::Path;
+
+    let path = Path::new(path);
+
+    if !path.exists() {
+        return false;
+    }
+
+    if !path.is_file() {
+        return false;
+    }
+
+    if let Some(extension) = path.extension() {
+        let ext = extension.to_string_lossy().to_lowercase();
+        matches!(
+            ext.as_str(),
+            "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "ico" | "tiff" | "tif"
+        )
+    } else {
+        false
+    }
 }

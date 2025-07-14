@@ -1,12 +1,14 @@
+use std::collections::{HashMap, HashSet};
+use crate::dtos::image_dto::{ImageDTO, ImageUpdateDTO};
 use crate::models::filter::{Filter, SortOrder};
 use crate::models::image::{ActiveModel, Entity, Model};
-use crate::models::image_dto::{ImageDTO, ImageUpdateDTO};
 use crate::models::page::Page;
 use crate::models::{image, image_tag, tag};
 use crate::services::connection_db::get_connection;
 use crate::services::tag_service::{get_tags_for_images, update_tags};
 use sea_orm::{prelude::*, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, InsertResult, JoinType, Order, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait};
-use std::collections::{HashMap, HashSet};
+use log::info;
+use crate::dtos::tag_dto::TagDTO;
 
 pub async fn insert_image(desc: &str) -> Result<i64, DbErr> {
     let db = get_connection().await?;
@@ -86,15 +88,9 @@ pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<Image
     // Search for tags for each image
     let image_ids: Vec<i64> = images.iter().map(|img| img.id).collect();
 
-    let image_tags = get_tags_for_images(&image_ids, &db).await?;
+    let tags_map = get_tags_for_images(&image_ids, &db).await?;
 
-    // Group tags by image
-    let mut tags_map: HashMap<i64, HashSet<String>> = HashMap::new();
-    for (image_id, tag_name) in image_tags {
-        tags_map.entry(image_id).or_default().insert(tag_name);
-    }
-
-    let dtos: Vec<ImageDTO> = to_dto(images, tags_map).await;
+    let dtos = to_dto(images, tags_map);
 
     Ok(Page {
         content: dtos,
@@ -135,16 +131,11 @@ async fn find_all_images_without_filter(
     // Search for tags for each image
     let image_ids: Vec<i64> = images.iter().map(|img| img.id).collect();
 
-    let image_tags = get_tags_for_images(&image_ids, db).await?;
+    let tags_map = get_tags_for_images(&image_ids, db).await?;
 
-    // Group tags by image
-    let mut tags_map: HashMap<i64, HashSet<String>> = HashMap::new();
-    for (image_id, tag_name) in image_tags {
-        tags_map.entry(image_id).or_default().insert(tag_name);
-    }
+    let dtos = to_dto(images, tags_map);
 
-    let dtos: Vec<ImageDTO> = to_dto(images, tags_map).await;
-
+    info!("Found {:?} images", dtos);
     Ok(Page {
         content: dtos,
         total_pages,
@@ -163,19 +154,15 @@ pub async fn delete_image(id_val: i64) -> Result<(), DbErr> {
 }
 
 pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbErr> {
-    let db = get_connection()
-        .await
-        .expect("Failed to connect to database");
-    let existing_model = find_by_id(id)
-        .await
+    let db = get_connection().await?;
+
+    let existing_model = Entity::find_by_id(id)
         .one(&db)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Image not found".to_string()))?;
 
-    // Converte para ActiveModel
     let mut active_model: ActiveModel = existing_model.into();
 
-    // Update fields
     if let Some(path) = dto.path {
         if !path.is_empty() {
             active_model.path = Set(path);
@@ -194,10 +181,8 @@ pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbEr
         }
     }
 
-    // Update
     let updated_model = active_model.update(&db).await?;
 
-    // If tags exists, update them
     if let Some(tags) = dto.tags {
         if !tags.is_empty() {
             update_tags(&db, id, tags).await?;
@@ -207,8 +192,28 @@ pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbEr
     Ok(updated_model)
 }
 
-pub async fn find_by_id(id_val: i64) -> Select<Entity> {
-    Entity::find_by_id(id_val)
+pub async fn find_by_id(id_val: i64) -> Result<Option<ImageDTO>, DbErr> {
+    let db = get_connection().await?;
+
+    // Consulta o Model da imagem diretamente, sem recursão
+    if let Some(model) = Entity::find_by_id(id_val).one(&db).await? {
+        // Busca as tags dessa imagem
+        let tags_map: HashMap<i64, HashSet<TagDTO>> =
+            get_tags_for_images(&[id_val], &db).await?;
+
+        // Constrói o DTO diretamente aqui
+        let dto = ImageDTO {
+            id: model.id,
+            path: model.path,
+            thumbnail_path: model.thumbnail_path,
+            description: model.description,
+            tags: tags_map.get(&id_val).cloned().unwrap_or_default(),
+        };
+
+        Ok(Some(dto))
+    } else {
+        Ok(None)
+    }
 }
 
 fn build_desc_condition(query: &str) -> Option<Condition> {
@@ -234,20 +239,26 @@ fn build_desc_condition(query: &str) -> Option<Condition> {
     }
 }
 
-
-pub async fn to_dto(
+pub fn to_dto(
     images: Vec<Model>,
-    mut tags_map: HashMap<i64, HashSet<String>>,
+    tags_map: HashMap<i64, HashSet<TagDTO>>,
 ) -> Vec<ImageDTO> {
-    let images: Vec<ImageDTO> = images
-        .into_iter()
-        .map(|img| ImageDTO {
-            id: img.id,
-            path: img.path,
-            thumbnail_path: img.thumbnail_path,
-            description: img.description,
-            tags: tags_map.remove(&img.id).unwrap_or_default(),
-        })
-        .collect();
     images
+        .iter()
+        .map(|img| to_image_dto(img, &tags_map))
+        .collect()
 }
+
+pub fn to_image_dto(
+    model: &Model,
+    tags_map: &HashMap<i64, HashSet<TagDTO>>,
+) -> ImageDTO {
+    ImageDTO {
+        id: model.id,
+        path: model.path.clone(),
+        thumbnail_path: model.thumbnail_path.clone(),
+        description: model.description.clone(),
+        tags: tags_map.get(&model.id).cloned().unwrap_or_default(),
+    }
+}
+

@@ -1,16 +1,17 @@
 use crate::components::tag_selector;
 use crate::components::tag_selector::TagSelector;
-use crate::models::image_dto::ImageUpdateDTO;
+use crate::dtos::image_dto::ImageUpdateDTO;
+use crate::dtos::tag_dto::TagDTO;
 use crate::services::file_service::save_image_file_with_thumbnail;
-use crate::services::thumbnail_service::open_and_fix_image;
+use crate::services::thumbnail_service::{dynamic_image_to_rgba, open_and_fix_image};
 use crate::services::toast_service::{push_error, push_success};
 use crate::services::{image_service, tag_service};
 use iced::widget::image::Handle;
 use iced::widget::{Button, Column, Container, Image, Text, text_input};
 use iced::{Element, Task};
 use iced_modern_theme::Modern;
-use image::{DynamicImage};
-use log::{error, info};
+use image::DynamicImage;
+use log::{error, info, warn};
 use rfd::AsyncFileDialog;
 use std::collections::HashSet;
 
@@ -20,13 +21,14 @@ pub enum Message {
     ImageChosen(String),
     DescriptionChanged(String),
     TagSelectorMessage(tag_selector::Message),
-    TagsLoaded(Vec<String>),
+    TagsLoaded(Vec<TagDTO>),
     Submit {
-        path: String,
         description: String,
-        tags: HashSet<String>,
+        tags: HashSet<TagDTO>,
+        dynamic_image: DynamicImage,
     },
     NavigateToSearch,
+    ImagePasted(DynamicImage),
     NoOps,
 }
 
@@ -37,26 +39,37 @@ pub enum Action {
 }
 
 pub struct Register {
-    image_path: String,
+    dynamic_image: Option<DynamicImage>,
     image_handle: Option<Handle>,
     description: String,
     tag_selector: TagSelector,
+    tags_loaded: bool,
     submitted: bool,
 }
 
 impl Register {
-    pub fn new() -> (Self, Task<Message>) {
-        let tag_selector = TagSelector::new(Vec::new());
+    pub fn new(dynamic_image: Option<DynamicImage>) -> (Self, Task<Message>) {
+        let tag_selector = TagSelector::new(Vec::new(), true);
+        let image_handle = dynamic_image.as_ref().map(|img| dynamic_image_to_rgba(img));
         (
             Self {
-                image_path: String::new(),
-                image_handle: None,
+                dynamic_image,
+                image_handle,
                 description: String::new(),
                 tag_selector,
+                tags_loaded: false,
                 submitted: false,
             },
-            Task::perform(async { tag_service::find_all().await }, |tags| {
-                Message::TagsLoaded(tags.expect("Failed to load tags"))
+            Task::perform(async { tag_service::find_all().await }, |tags| match tags {
+                Ok(tags) => {
+                    info!("Loaded {} tags", tags.len());
+                    Message::TagsLoaded(tags)
+                }
+                Err(err) => {
+                    error!("Failed to load tags: {}", err);
+                    push_error("Erro ao carregar tags");
+                    Message::TagsLoaded(Vec::new())
+                }
             }),
         )
     }
@@ -67,7 +80,10 @@ impl Register {
                 let task = Task::perform(
                     async {
                         AsyncFileDialog::new()
-                            .add_filter("Images", &["png", "jpg", "jpeg"])
+                            .add_filter(
+                                "Images",
+                                &["png", "jpg", "jpeg", "gif", "bmp", "tiff", "webp"],
+                            )
                             .set_directory("/")
                             .pick_file()
                             .await
@@ -83,8 +99,9 @@ impl Register {
                 Action::Run(task)
             }
             Message::ImageChosen(path) => {
-                self.image_handle = self.dynamic_image_to_rgba(open_and_fix_image(&path).unwrap()).into();
-                self.image_path = path.clone();
+                let dynamic_image = open_and_fix_image(&path).unwrap();
+                self.image_handle = dynamic_image_to_rgba(&dynamic_image).into();
+                self.dynamic_image = Some(dynamic_image);
                 Action::None
             }
             Message::DescriptionChanged(desc) => {
@@ -92,8 +109,9 @@ impl Register {
                 Action::None
             }
             Message::TagsLoaded(tags) => {
-                info!("Loaded tags: {:#?}", tags);
+                info!("Loaded {} tags", tags.len());
                 self.tag_selector.available = tags;
+                self.tags_loaded = true; // Marca que as tags foram carregadas
                 Action::None
             }
             Message::TagSelectorMessage(msg) => {
@@ -102,63 +120,83 @@ impl Register {
                 Action::Run(task)
             }
             Message::Submit {
-                path,
+                dynamic_image,
                 description,
                 tags,
             } => {
+                if self.submitted {
+                    warn!("Submit already in progress, ignoring duplicate request");
+                    return Action::None;
+                }
+
                 let task = Task::perform(
                     async move {
-                        let image_id = image_service::insert_image(&description).await
-                            .map_err(|err| {
-                                error!("Erro ao inserir imagem no banco: {}", err);
-                                format!("Falha ao inserir imagem: {}", err)
-                            })?;
+                        let image_id =
+                            image_service::insert_image(&description)
+                                .await
+                                .map_err(|err| {
+                                    error!("Erro ao inserir imagem no banco: {}", err);
+                                    format!("Falha ao inserir imagem: {}", err)
+                                })?;
 
-                        let (new_path, thumb_path) = save_image_file_with_thumbnail(image_id, &path)
-                            .map_err(|err| {
-                                error!("Erro ao salvar arquivo de imagem {}: {}", image_id, err);
-                                format!("Falha ao salvar arquivo: {}", err)
-                            })?;
+                        let (new_path, thumb_path) = save_image_file_with_thumbnail(
+                            image_id,
+                            dynamic_image,
+                        )
+                        .map_err(|err| {
+                            error!("Erro ao salvar arquivo de imagem {}: {}", image_id, err);
+                            format!("Falha ao salvar arquivo: {}", err)
+                        })?;
 
                         let mut dto = ImageUpdateDTO::default();
                         dto.path = Some(new_path);
                         dto.thumbnail_path = Some(thumb_path);
                         dto.tags = Some(tags);
 
-                        image_service::update_from_dto(image_id, dto).await
+                        image_service::update_from_dto(image_id, dto)
+                            .await
                             .map_err(|err| {
                                 error!("Erro ao atualizar imagem {}: {}", image_id, err);
                                 format!("Falha ao atualizar imagem: {}", err)
                             })?;
 
+                        info!("Image {} successfully registered", image_id);
                         Ok(())
                     },
                     |result: Result<(), String>| match result {
                         Ok(_) => {
-                            push_success(t!("message.register.success"));
+                            push_success("Imagem registrada com sucesso!");
                             Message::NavigateToSearch
                         }
                         Err(err) => {
                             error!("Erro no processo de submit: {}", err);
-                            push_error(t!("message.register.error"));
-                            Message::NavigateToSearch
+                            push_error("Erro ao registrar imagem");
+                            Message::NoOps
                         }
                     },
                 );
+
                 self.submitted = true;
                 Action::Run(task)
             }
             Message::NavigateToSearch => Action::GoToSearch,
+
+            Message::ImagePasted(dynamic_image) => {
+                info!("Image pasted from clipboard");
+
+                self.image_handle = Some(dynamic_image_to_rgba(&dynamic_image));
+
+                self.dynamic_image = Some(dynamic_image);
+
+                Action::None
+            }
             Message::NoOps => Action::None,
         }
     }
 
     pub fn view(&self) -> Element<Message> {
-        let preview: Element<Message> = if !self.image_path.is_empty() {
-            Image::new(self.image_handle.clone().unwrap())
-                .width(200.0)
-                .height(200.0)
-                .into()
+        let preview: Element<Message> = if let Some(handle) = &self.image_handle {
+            Image::new(handle.clone()).width(200.0).height(200.0).into()
         } else {
             Text::new(t!("register.tooltip.select_image")).into()
         };
@@ -183,23 +221,24 @@ impl Register {
             .spacing(20)
             .push(file_row)
             .push(
-                text_input(t!("register.input.description").as_ref(), &self.description)
+                text_input("Descrição da imagem", &self.description)
                     .style(Modern::text_input())
                     .on_input(Message::DescriptionChanged),
             )
             .push(Text::new("Tags:"))
             .push(tags_view);
 
-        let ready = !self.image_path.is_empty()
-            && !self.description.is_empty()
-            && !self.tag_selector.selected.is_empty();
+        let ready = self.image_handle.is_some()
+            && !self.description.trim().is_empty()
+            && !self.tag_selector.selected.is_empty()
+            && self.dynamic_image.is_some();
 
-        let mut button = Button::new(Text::new(t!("register.button.add_image")))
-            .style(Modern::primary_button());
+        let mut button =
+            Button::new(Text::new(t!("register.button.add_image"))).style(Modern::primary_button());
 
         if ready && !self.submitted {
             button = button.on_press(Message::Submit {
-                path: self.image_path.clone(),
+                dynamic_image: self.dynamic_image.as_ref().unwrap().clone(),
                 description: self.description.clone(),
                 tags: self.tag_selector.selected_tags(),
             });
@@ -208,14 +247,5 @@ impl Register {
         form = form.push(button);
 
         form.into()
-    }
-
-    fn dynamic_image_to_rgba(&self, dynamic_image: DynamicImage) -> Handle {
-        let rgba_image = dynamic_image.to_rgba8();
-        let (width, height) = rgba_image.dimensions();
-
-        let pixels = rgba_image.into_raw();
-
-        Handle::from_rgba(width, height, pixels)
     }
 }

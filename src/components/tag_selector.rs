@@ -1,35 +1,39 @@
+use crate::dtos::tag_dto::TagDTO;
+use crate::models::tag_color::TagColor;
+use crate::services::tag_service;
+use crate::services::toast_service::{push_error, push_success};
 use iced::widget::{Button, Container, Row, Text, text_input};
 use iced::{Alignment, Element, Length, Task};
 use iced_font_awesome::fa_icon;
 use iced_modern_theme::Modern;
-use log::{info};
+use log::info;
 use std::collections::HashSet;
-use crate::services::tag_service;
-use crate::services::toast_service::{push_error, push_success};
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    ToggleTag(String),
+    ToggleTag(TagDTO),
     CreateNewTagPressed,
     NewTagNameChanged(String),
     CreateNewTag(String),
-    TagCreateResult(Result<Vec<String>, String>),
+    TagCreateResult(Result<Vec<TagDTO>, String>),
     CancelNewTag,
 }
 
 #[derive(Debug, Clone)]
 pub struct TagSelector {
-    pub selected: HashSet<String>,
-    pub available: Vec<String>,
+    pub selected: HashSet<TagDTO>,
+    pub available: Vec<TagDTO>,
+    show_add_tag_button: bool,
     show_new_tag_input: bool,
     new_tag_name: String,
 }
 
 impl TagSelector {
-    pub fn new(available: Vec<String>) -> Self {
+    pub fn new(available: Vec<TagDTO>, show_add_tag_button: bool) -> Self {
         Self {
             selected: HashSet::new(),
             available,
+            show_add_tag_button,
             show_new_tag_input: false,
             new_tag_name: String::new(),
         }
@@ -60,15 +64,13 @@ impl TagSelector {
                 let task = Task::perform(
                     async move {
                         // 1. salva
-                        tag_service::save(&tag_async)
+                        tag_service::save(&tag_async, TagColor::Blue)
                             .await
                             .map_err(|e| e.to_string())?;
                         // 2. carrega de novo
                         tag_service::find_all().await.map_err(|e| e.to_string())
                     },
-                    |result| {
-                        Message::TagCreateResult(result)
-                    },
+                    |result| Message::TagCreateResult(result),
                 );
                 task
             }
@@ -99,7 +101,7 @@ impl TagSelector {
 
         for tag in &self.available {
             let selected = self.selected.contains(tag);
-            let label = Self::capitalize_first(tag);
+            let label = Self::capitalize_first(&tag.name);
             let button = if selected {
                 Button::new(Text::new(label))
                     .style(Modern::green_tinted_button())
@@ -114,12 +116,13 @@ impl TagSelector {
             row = row.push(button);
         }
 
-        // Inline new tag input
-        row = row.push(
-            Button::new(Text::new(t!("message.tag.new")))
-                .style(Modern::secondary_button())
-                .on_press(Message::CreateNewTagPressed),
-        );
+        if self.show_add_tag_button {
+            row = row.push(
+                Button::new(Text::new(t!("message.tag.new")))
+                    .style(Modern::secondary_button())
+                    .on_press(Message::CreateNewTagPressed),
+            );
+        }
 
         if self.show_new_tag_input {
             let input_row = Row::new()
@@ -149,7 +152,7 @@ impl TagSelector {
         row.wrap().into()
     }
 
-    pub fn selected_tags(&self) -> HashSet<String> {
+    pub fn selected_tags(&self) -> HashSet<TagDTO> {
         self.selected.iter().cloned().collect()
     }
 

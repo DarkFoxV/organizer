@@ -7,14 +7,24 @@ use log::{debug, error, info};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
+use std::env;
+
+pub fn get_exe_dir() -> PathBuf {
+    env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
 /// Returns the base path for config assets depending on the build mode
 fn get_assets_path() -> PathBuf {
     if cfg!(debug_assertions) {
         // Development mode
         PathBuf::from("./src/config/")
     } else {
-        // Release mode
-        PathBuf::from("./config/")
+        // Release mode: use path relative to the executable
+        let exe_dir = get_exe_dir();
+        exe_dir.join("config")
     }
 }
 
@@ -59,7 +69,6 @@ impl Settings {
         info!("Config saved");
         Ok(())
     }
-
 }
 
 /// Serializable structure for app config

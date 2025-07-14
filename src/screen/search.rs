@@ -1,7 +1,10 @@
 use crate::components::image_container::ImageContainer;
+use crate::components::tag_selector;
+use crate::components::tag_selector::TagSelector;
 use crate::config::get_settings;
+use crate::dtos::image_dto::ImageDTO;
+use crate::dtos::tag_dto::TagDTO;
 use crate::models::filter::{Filter, SortOrder};
-use crate::models::image_dto::ImageDTO;
 use crate::services::clipboard_service::copy_image_to_clipboard;
 use crate::services::toast_service::{push_error, push_success};
 use crate::services::{file_service, image_service, tag_service};
@@ -13,8 +16,8 @@ use iced::widget::{
 use iced::{Alignment, Element, Length, Task};
 use iced_font_awesome::fa_icon;
 use iced_modern_theme::Modern;
+use image::DynamicImage;
 use log::{error, info};
-use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
 
@@ -22,11 +25,12 @@ pub enum Action {
     None,
     Run(Task<Message>),
     NavigateToUpdate(ImageDTO),
-    NavigatorToRegister,
+    NavigatorToRegister(Option<DynamicImage>),
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    TagSelectorMessage(tag_selector::Message),
     QueryChanged(String),
     DelayedQuery(String),
     SearchButtonPressed,
@@ -36,23 +40,20 @@ pub enum Message {
     OpenLocalImage(i64),
     DeleteImage(i64),
     CopyImage(String),
-    Success(String),
-    TagToggled(String),
-    TagsLoaded(Vec<String>),
+    TagsLoaded(Vec<TagDTO>),
     GoToPage(u64),
-    Update(i64),
+    Update(ImageDTO),
     ClosePreview,
-    NavigateWithDTO(ImageDTO),
     NavigateToRegister,
     SortOrderChanged(SortOrder),
+    ImagePasted(DynamicImage),
     NoOps,
 }
 
 pub struct Search {
     pub query: String,
     pub images: Vec<ImageContainer>,
-    pub available_tags: Vec<String>,
-    pub selected_tags: HashSet<String>,
+    tag_selector: TagSelector,
     page_size: u64,
     current_page: u64,
     total_pages: u64,
@@ -69,8 +70,7 @@ impl Search {
             Self {
                 query: String::new(),
                 images: vec![],
-                available_tags: vec![],
-                selected_tags: HashSet::new(),
+                tag_selector: TagSelector::new(Vec::new(), false),
                 page_size,
                 current_page: 0,
                 total_pages: 0,
@@ -128,16 +128,12 @@ impl Search {
                 }
             }
 
-            Message::Update(id) => {
-                let img = self
-                    .images
-                    .iter()
-                    .find(|img| img.image_dto.id == id)
-                    .unwrap();
-                Action::NavigateToUpdate(img.image_dto.clone())
+            Message::Update(image_dto) => {
+                info!("Update image_dto: {}", image_dto.id);
+                info!("Update image_dto: {:?}", image_dto.tags);
+                Action::NavigateToUpdate(image_dto)
             }
 
-            Message::NavigateWithDTO(dto) => Action::NavigateToUpdate(dto),
 
             Message::OpenLocalImage(id) => {
                 let img = self.images.iter().find(|img| img.id == id).unwrap();
@@ -194,6 +190,8 @@ impl Search {
             Message::PushContainer(images, current_page, total_pages) => {
                 info!("Pushing {} images", images.len());
                 for img in images {
+                    info!("Pushing image {}", img.id);
+                    info!("Tags: {:?}", img.tags.iter().map(|t| &t.name).collect::<Vec<_>>());
                     self.images.push(ImageContainer::new(img.clone()));
                 }
 
@@ -220,18 +218,12 @@ impl Search {
             }
 
             Message::TagsLoaded(tags) => {
-                info!("{} tags loaded", tags.len());
-                self.available_tags = tags;
+                self.tag_selector.available = tags;
                 Action::None
             }
 
-            Message::TagToggled(tag) => {
-                if self.selected_tags.contains(&tag) {
-                    self.selected_tags.remove(&tag);
-                } else {
-                    self.selected_tags.insert(tag);
-                }
-
+            Message::TagSelectorMessage(msg) => {
+                let _ = self.tag_selector.update(msg);
                 let task = Task::perform(async move {}, |_| Message::SearchButtonPressed);
                 Action::Run(task)
             }
@@ -240,7 +232,7 @@ impl Search {
                 let page_size = self.page_size;
                 self.images.clear();
                 let query = self.query.clone();
-                let selected_tags = self.selected_tags.clone();
+                let selected_tags = self.tag_selector.selected.clone();
 
                 let task = Task::perform(
                     async move {
@@ -251,7 +243,7 @@ impl Search {
                         }
 
                         if !selected_tags.is_empty() {
-                            filter.tags = selected_tags;
+                            filter.tags = selected_tags.iter().map(|t| t.name.clone()).collect();
                         }
 
                         let page = image_service::find_all(filter, page_index, page_size)
@@ -270,9 +262,9 @@ impl Search {
                 self.images.clear();
                 let page_size = self.page_size;
                 let query = self.query.clone();
-                let selected_tags = self.selected_tags.clone();
+                let selected_tags = self.tag_selector.selected.clone();
                 let selected_sort_order = self.selected_sort_order.clone();
-                use std::collections::HashSet;
+
                 info!("Query: {} Tags: {:?}", query, selected_tags);
 
                 let task = Task::perform(
@@ -284,8 +276,7 @@ impl Search {
                         }
 
                         if !selected_tags.is_empty() {
-                            filter.tags =
-                                selected_tags.iter().cloned().collect::<HashSet<String>>();
+                            filter.tags = selected_tags.iter().map(|t| t.name.clone()).collect();
                         }
 
                         filter.sort_order = selected_sort_order;
@@ -308,12 +299,17 @@ impl Search {
                 Action::Run(task)
             }
 
-            Message::NavigateToRegister => Action::NavigatorToRegister,
+            Message::NavigateToRegister => Action::NavigatorToRegister(None),
+            Message::ImagePasted(dynamic_image) => { 
+                info!("Image pasted in search");
+                Action::NavigatorToRegister(Some(dynamic_image))
+            }
             _others => Action::None,
         }
     }
 
     pub fn view(&self) -> Element<Message> {
+        let tags_view = self.tag_selector.view().map(Message::TagSelectorMessage);
         let header = Column::new()
             .spacing(8)
             .push(
@@ -353,30 +349,7 @@ impl Search {
                         .width(Length::FillPortion(2)),
                     ),
             )
-            .push(
-                Row::new()
-                    .spacing(5)
-                    .padding(5)
-                    .push(Text::new("Tags:"))
-                    .extend(self.available_tags.iter().map(|tag| {
-                        let selected = self.selected_tags.contains(tag);
-
-                        let button = if selected {
-                            Button::new(Text::new(tag))
-                                .style(Modern::green_tinted_button())
-                                .on_press(Message::TagToggled(tag.clone()))
-                                .padding(5)
-                        } else {
-                            Button::new(Text::new(tag))
-                                .style(Modern::blue_tinted_button())
-                                .on_press(Message::TagToggled(tag.clone()))
-                                .padding(5)
-                        };
-
-                        button.into()
-                    }))
-                    .wrap(),
-            );
+            .push(tags_view);
 
         let mut images_row = Row::new().spacing(10);
 
