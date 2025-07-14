@@ -49,10 +49,10 @@ navbar:
 
 manage_tags:
   button:
-    add: "Agregar Etiqueta"
+    add: "Agregar"
     save: "Guardar"
-    delete: "Eliminar Etiqueta"
-    edit: "Editar Etiqueta"
+    delete: "Eliminar"
+    edit: "Editar"
     cancel: "Cancelar"
   input:
     description: "Nombre de la Etiqueta"

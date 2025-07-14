@@ -186,10 +186,10 @@ impl ManageTags {
             text(tag.color.to_string()).size(16).into()
         };
 
-        let save_label = t!("manager_tags.button.save");
-        let cancel_label = t!("manager_tags.button.cancel");
-        let edit_label = t!("manager_tags.button.edit");
-        let delete_label = t!("manager_tags.button.delete");
+        let save_label = t!("manage_tags.button.save");
+        let cancel_label = t!("manage_tags.button.cancel");
+        let edit_label = t!("manage_tags.button.edit");
+        let delete_label = t!("manage_tags.button.delete");
 
         let actions = if is_editing {
             row![

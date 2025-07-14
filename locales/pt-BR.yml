@@ -49,10 +49,10 @@ navbar:
 
 manage_tags:
   button:
-    add: "Adicionar Tag"
+    add: "Adicionar"
     save: "Salvar"
-    delete: "Excluir Tag"
-    edit: "Editar Tag"
+    delete: "Excluir"
+    edit: "Editar"
     cancel: "Cancelar"
   input:
     description: "Nome da Tag"

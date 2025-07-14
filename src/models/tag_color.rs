@@ -1,7 +1,6 @@
-use iced::Color;
+use sea_orm::entity::prelude::*;
 use sea_orm::EnumIter;
 use sea_orm::Iterable;
-use sea_orm::entity::prelude::*;
 use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, DeriveActiveEnum, EnumIter)]

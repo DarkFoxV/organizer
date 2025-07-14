@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use crate::dtos::image_dto::{ImageDTO, ImageUpdateDTO};
+use crate::dtos::tag_dto::TagDTO;
 use crate::models::filter::{Filter, SortOrder};
 use crate::models::image::{ActiveModel, Entity, Model};
 use crate::models::page::Page;
@@ -7,8 +7,7 @@ use crate::models::{image, image_tag, tag};
 use crate::services::connection_db::get_connection;
 use crate::services::tag_service::{get_tags_for_images, update_tags_for_image};
 use sea_orm::{prelude::*, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, InsertResult, JoinType, Order, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait};
-use log::info;
-use crate::dtos::tag_dto::TagDTO;
+use std::collections::{HashMap, HashSet};
 
 pub async fn insert_image(desc: &str) -> Result<i64, DbErr> {
     let db = get_connection().await?;
