@@ -8,6 +8,7 @@ pub struct ImageDTO {
     pub thumbnail_path: String,
     pub description: String,
     pub tags: HashSet<TagDTO>,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone)]

@@ -87,3 +87,15 @@ message:
     update:
       success: "Tags updated successfully"
       error: "Error updating tags"
+
+tag:
+  color:
+    red: "Red"
+    green: "Green"
+    blue: "Blue"
+    orange: "Orange"
+    purple: "Purple"
+    pink: "Pink"
+    indigo: "Indigo"
+    teal: "Teal"
+    gray: "Gray"

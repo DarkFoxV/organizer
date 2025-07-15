@@ -206,6 +206,7 @@ pub async fn find_by_id(id_val: i64) -> Result<Option<ImageDTO>, DbErr> {
             thumbnail_path: model.thumbnail_path,
             description: model.description,
             tags: tags_map.get(&id_val).cloned().unwrap_or_default(),
+            created_at: model.created_at.format("%Y-%m-%d").to_string()
         };
 
         Ok(Some(dto))
@@ -257,6 +258,7 @@ pub fn to_image_dto(
         thumbnail_path: model.thumbnail_path.clone(),
         description: model.description.clone(),
         tags: tags_map.get(&model.id).cloned().unwrap_or_default(),
+        created_at: model.created_at.format("%Y-%m-%d").to_string()
     }
 }
 

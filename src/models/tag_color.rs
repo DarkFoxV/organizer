@@ -18,6 +18,12 @@ pub enum TagColor {
     Purple,
     #[sea_orm(string_value = "pink")]
     Pink,
+    #[sea_orm(string_value = "indigo")]
+    Indigo,
+    #[sea_orm(string_value = "Teal")]
+    Teal,
+    #[sea_orm(string_value = "Gray")]
+    Gray,
 }
 
 impl Default for TagColor {
@@ -35,6 +41,9 @@ impl TagColor {
             TagColor::Orange => "orange",
             TagColor::Purple => "purple",
             TagColor::Pink => "pink",
+            TagColor::Indigo => "indigo",
+            TagColor::Teal => "teal",
+            TagColor::Gray => "gray",
         }
     }
 
@@ -46,6 +55,9 @@ impl TagColor {
             "orange" => Some(TagColor::Orange),
             "purple" => Some(TagColor::Purple),
             "pink" => Some(TagColor::Pink),
+            "indigo" => Some(TagColor::Indigo),
+            "teal" => Some(TagColor::Teal),
+            "gray" => Some(TagColor::Gray),
             _ => None,
         }
     }
@@ -59,12 +71,15 @@ impl TagColor {
 impl fmt::Display for TagColor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            TagColor::Red => "Red",
-            TagColor::Green => "Green",
-            TagColor::Blue => "Blue",
-            TagColor::Orange => "Orange",
-            TagColor::Purple => "Purple",
-            TagColor::Pink => "Pink",
+            TagColor::Red => t!("tag.color.red"),
+            TagColor::Green => t!("tag.color.green"),
+            TagColor::Blue => t!("tag.color.blue"),
+            TagColor::Orange => t!("tag.color.orange"),
+            TagColor::Purple => t!("tag.color.purple"),
+            TagColor::Pink => t!("tag.color.pink"),
+            TagColor::Indigo => t!("tag.color.indigo"),
+            TagColor::Teal => t!("tag.color.teal"),
+            TagColor::Gray => t!("tag.color.gray"),
         };
         write!(f, "{}", s)
     }

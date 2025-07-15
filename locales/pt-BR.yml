@@ -87,3 +87,16 @@ message:
     update:
       success: "Tags atualizadas com sucesso"
       error: "Erro ao atualizar tags"
+
+tag:
+  color:
+    red: "Vermelho"
+    orange: "Laranja"
+    yellow: "Amarelo"
+    green: "Verde"
+    blue: "Azul"
+    purple: "Roxo"
+    pink: "Rosa"
+    indigo: "Indigo"
+    teal: "Azul-escuro"
+    gray: "Cinza"

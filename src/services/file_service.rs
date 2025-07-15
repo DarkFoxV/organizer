@@ -1,12 +1,12 @@
 use crate::services::thumbnail_service::generate_thumbnail_from_image;
+use crate::utils::get_exe_dir;
 use image::DynamicImage;
+use log::{info, warn};
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::process::Command;
-use std::env;
-use log::{debug, info, warn};
-use crate::services::image_service;
+
 // ===================================
 //         UTILITY FUNCTIONS
 // ===================================
@@ -16,10 +16,7 @@ pub fn save_image_file_with_thumbnail(
     image: DynamicImage,
 ) -> Result<(String, String), Box<dyn std::error::Error>> {
     // Absolute path to the executable
-    let base_dir = env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
+    let base_dir = get_exe_dir();
 
     let images_dir = base_dir.join("images");
     if !images_dir.exists() {
@@ -60,13 +57,15 @@ pub async fn delete_image_by_path(path: &str) -> Result<(), io::Error> {
             warn!("Parent directory does not exist: {}", parent_dir.display());
         }
     } else {
-        warn!("Could not determine parent directory for: {}", image_path.display());
+        warn!(
+            "Could not determine parent directory for: {}",
+            image_path.display()
+        );
     }
 
     info!("File deletion completed for path: {}", path);
     Ok(())
 }
-
 
 pub fn open_in_file_explorer(path: &Path) -> io::Result<()> {
     if !path.exists() {

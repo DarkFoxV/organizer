@@ -38,6 +38,7 @@ pub struct Update {
     description: String,
     original_description: String,
     tags_loaded: bool,
+    submitted: bool,
 }
 
 impl Update {
@@ -52,6 +53,7 @@ impl Update {
             description,
             original_description,
             tags_loaded: false,
+            submitted: false,
         };
 
         // Carrega todas as tags disponíveis
@@ -185,7 +187,7 @@ impl Update {
         let description_valid = !self.description.trim().is_empty();
         let tags_valid = !self.tag_selector.selected.is_empty();
 
-        let ready = has_changes && description_valid && tags_valid && self.tags_loaded;
+        let ready = has_changes && description_valid && tags_valid && self.tags_loaded && !self.submitted;
 
         // Action button - always visible but conditionally enabled/disabled
         let mut save_button = Button::new(Text::new(t!("update.button.save")));

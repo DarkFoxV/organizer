@@ -55,6 +55,7 @@ pub enum NavigationTarget {
     Update(ImageDTO),
     Preferences,
     ManageTags,
+    Workspace,
 }
 
 pub struct Organizer {
@@ -132,7 +133,8 @@ impl Organizer {
                 self.screen = Screen::ManageTags(manage_tags);
                 self.navbar.selected = NavButton::ManageTags;
                 task.map(Message::ManageTags)
-            }
+            },
+            NavigationTarget::Workspace => todo!()
         }
     }
 
@@ -267,7 +269,7 @@ impl Organizer {
                     navbar::Action::Navigate(button) => {
                         let target = match button {
                             NavButton::Home | NavButton::Search => NavigationTarget::Search,
-                            NavButton::Workspace => NavigationTarget::Register(None),
+                            NavButton::Workspace => NavigationTarget::Search,
                             NavButton::Preferences => NavigationTarget::Preferences,
                             NavButton::ManageTags => NavigationTarget::ManageTags,
                         };

@@ -34,6 +34,10 @@ impl ImageContainer {
             .width(Length::Fill)
             .height(Length::FillPortion(6));
 
+        let created_at = Text::new(&self.image_dto.created_at)
+            .size(12)
+            .style(Modern::secondary_text());
+
         let buttons = Row::new()
             .spacing(10)
             .push(
@@ -96,6 +100,7 @@ impl ImageContainer {
                 .spacing(10)
                 .push(image_widget)
                 .push(description)
+                .push(created_at)
                 .push(buttons_container),
         )
         .padding(10)

@@ -120,6 +120,9 @@ impl TagSelector {
                     TagColor::Orange => Box::new(Modern::orange_tinted_button()),
                     TagColor::Purple => Box::new(Modern::purple_tinted_button()),
                     TagColor::Pink => Box::new(Modern::pink_tinted_button()),
+                    TagColor::Indigo => Box::new(Modern::indigo_tinted_button()),
+                    TagColor::Teal => Box::new(Modern::teal_tinted_button()),
+                    TagColor::Gray => Box::new(Modern::plain_button()),
                 }
             } else if selected && self.colorized {
                 match tag.color {
@@ -129,6 +132,9 @@ impl TagSelector {
                     TagColor::Orange => Box::new(Modern::warning_button()),
                     TagColor::Purple => Box::new(Modern::purple_button()),
                     TagColor::Pink => Box::new(Modern::pink_button()),
+                    TagColor::Indigo => Box::new(Modern::indigo_button()),
+                    TagColor::Teal => Box::new(Modern::teal_button()),
+                    TagColor::Gray => Box::new(Modern::system_button()),
                 }
             } else {
                 if selected {

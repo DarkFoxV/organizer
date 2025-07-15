@@ -87,3 +87,16 @@ message:
     update:
       success: "Etiquetas actualizadas con éxito"
       error: "Error al actualizar etiquetas"
+
+tag:
+  color:
+    red: "Rojo"
+    orange: "Naranja"
+    yellow: "Amarillo"
+    green: "Verde"
+    blue: "Azul"
+    purple: "Morado"
+    pink: "Rosa"
+    indigo: "Indigo"
+    teal: "Azul Marino"
+    gray: "Gris"
