@@ -5,38 +5,64 @@ search:
   button:
     search: "Search"
     register: "Register"
+    next: "Next"
+    previous: "Previous"
+
   input:
     description: "Enter description"
   order:
-    newest: "Newest First"
-    oldest: "Oldest First"
+    newest: "Newest"
+    oldest: "Oldest"
 
 register:
+  status:
+    incomplete: "Incomplete"
+    ready: "Complete"
+  section:
+    image: "Image"
+    description: "Description"
+    tags: "Tags"
   tooltip:
-    select_image: "No image selected"
+    select_file: "No image selected"
   button:
-    add_image: "Add Image"
-    select_image: "Select Image"
-  input:
+    submit: "Add Image"
+    submitting: "Image in processing"
+    select_file: "Select Image"
+  placeholder:
     description: "Description"
 
 update:
   button:
     save: "Save"
-  tooltip:
-    current_image: "Current Image"
+    updating: "Updating"
+  status:
+    no_changes: "No changes"
+    changes_detected: "Changes detected"
+  changes:
     description: "Description will be changed"
     tags: "Tags will be changed"
+  section:
+    current_image: "Current Image"
+    description: "Description"
+    tags: "Tags"
 
 preferences:
   title: "Preferences"
+  subtitle: "Configure your preferences"
   label:
     language: "Language:"
     theme: "Theme:"
     items_per_page: "Items per page (1-100):"
+    thumb_compression: "Thumbnail compression:"
+    image_compression: "Image compression:"
   select:
     language: "Select a language"
     theme: "Select a theme"
+  compression:
+    low: "Low"
+    medium: "Medium"
+    high: "High"
+    max: "Maximum"
 
 navbar:
   button:
@@ -46,21 +72,36 @@ navbar:
     workspace: "Workspace"
     manage_tags: "Manage Tags"
     settings: "Settings"
-
   tooltip:
     edit_image: "Edit Image"
 
 manage_tags:
+  title: "Manage Tags"
+  subtitle: "Manage your tags"
+  add_form:
+    title: "Add Tag"
+  table:
+    name_header: "Name"
+    color_header: "Color"
+    actions_header: "Actions"
   button:
-    add: "Add"
+    create: "Create"
     save: "Save"
     delete: "Delete"
     edit: "Edit"
     cancel: "Cancel"
   input:
-    description: "Tag Name"
+    name_placeholder: "Tag name"
+    description: "Tag name"
 
 message:
+  image:
+    container:
+      edit: "Edit Image"
+      delete: "Delete Image"
+      open: "View Image"
+      copy: "Copy Image"
+      open_local: "Open Local Image"
   copy:
     success: "Image copied to clipboard"
     error: "Error copying image to clipboard"
@@ -74,9 +115,10 @@ message:
     success: "Image deleted successfully"
     error: "Error deleting image"
   tag:
-    new: "+ New Tag"
+    new: "New Tag"
     success: "Tag added successfully"
     error: "Error adding tag"
+    empty: "Tag field must be filled"
   open:
     success: "Image opened successfully"
     error: "Error opening image"
@@ -91,9 +133,10 @@ message:
 tag:
   color:
     red: "Red"
+    orange: "Orange"
+    yellow: "Yellow"
     green: "Green"
     blue: "Blue"
-    orange: "Orange"
     purple: "Purple"
     pink: "Pink"
     indigo: "Indigo"

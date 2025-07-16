@@ -4,6 +4,8 @@ use std::time::{Duration, Instant};
 pub enum ToastKind {
     Success,
     Error,
+    Info,
+    Warning,
 }
 
 #[derive(Debug, Clone)]

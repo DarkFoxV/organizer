@@ -81,7 +81,7 @@ fn calculate_dimensions(width: u32, height: u32, max_width: u32, max_height: u32
 // ===================================
 
 /// Saves an image as PNG with configurable compression
-fn save_image_as_png<P: AsRef<Path>>(
+pub fn save_image_as_png<P: AsRef<Path>>(
     img: &DynamicImage,
     output_path: P,
     compression_level: u8,

@@ -133,8 +133,8 @@ impl Organizer {
                 self.screen = Screen::ManageTags(manage_tags);
                 self.navbar.selected = NavButton::ManageTags;
                 task.map(Message::ManageTags)
-            },
-            NavigationTarget::Workspace => todo!()
+            }
+            NavigationTarget::Workspace => todo!(),
         }
     }
 
@@ -380,7 +380,9 @@ impl Organizer {
     }
 }
 
+
 fn main() -> iced::Result {
+
     info!("Starting application");
     logger_service::init().expect("Failed to initialize logger");
 

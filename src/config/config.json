@@ -1,5 +1,7 @@
 {
   "theme": "Dark",
   "language": "pt-BR",
-  "items_per_page": 35
+  "items_per_page": 35,
+  "thumb_compression": 9,
+  "image_compression": 5
 }

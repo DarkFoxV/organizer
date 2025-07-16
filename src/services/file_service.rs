@@ -1,4 +1,4 @@
-use crate::services::thumbnail_service::generate_thumbnail_from_image;
+use crate::services::thumbnail_service::{generate_thumbnail_from_image, save_image_as_png};
 use crate::utils::get_exe_dir;
 use image::DynamicImage;
 use log::{info, warn};
@@ -6,7 +6,7 @@ use std::fs;
 use std::io;
 use std::path::{Path};
 use std::process::Command;
-
+use crate::config::get_settings;
 // ===================================
 //         UTILITY FUNCTIONS
 // ===================================
@@ -31,12 +31,14 @@ pub fn save_image_file_with_thumbnail(
     // Save
     let image_filename = format!("image_{}.png", id);
     let image_path = image_dir.join(&image_filename);
-    image.save(&image_path)?;
+    let image_compression = get_settings().config.image_compression.unwrap_or(5);
+    save_image_as_png(&image, &image_path, image_compression)?;
 
     // Thumbnail
     let thumb_filename = format!("thumb_image_{}.png", id);
     let thumb_path = image_dir.join(&thumb_filename);
-    generate_thumbnail_from_image(&image, &thumb_path, 500, 500, 6)?;
+    let thumb_compression = get_settings().config.thumb_compression.unwrap_or(9);
+    generate_thumbnail_from_image(&image, &thumb_path, 500, 500, thumb_compression)?;
 
     Ok((
         image_path.to_string_lossy().to_string(),

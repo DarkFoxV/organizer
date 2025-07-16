@@ -3,9 +3,9 @@ use crate::models::tag_color::TagColor;
 use crate::services::tag_service;
 use crate::services::toast_service::{push_error, push_success};
 use crate::utils::capitalize_first;
-use iced::widget::{Button, Container, Row, Text, text_input};
-use iced::{Alignment, Element, Length, Task, Theme};
-use iced_font_awesome::fa_icon;
+use iced::widget::{Button, Column, Container, Row, Space, Text, text_input};
+use iced::{Alignment, Element, Length, Padding, Task, Theme};
+use iced_font_awesome::fa_icon_solid;
 use iced_modern_theme::Modern;
 use log::info;
 use std::collections::HashSet;
@@ -100,7 +100,8 @@ impl TagSelector {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let mut row = Row::new().spacing(10);
+        // Tags disponíveis
+        let mut tag_buttons = Row::new().spacing(8);
 
         for tag in &self.available {
             let selected = self.selected.contains(tag);
@@ -144,48 +145,87 @@ impl TagSelector {
                 }
             };
 
-            let button = Button::new(Text::new(label))
+            let button_content = Row::new()
+                .spacing(6)
+                .align_y(Alignment::Center)
+                .push(Text::new(label).size(14));
+
+            let button = Button::new(button_content)
                 .style(style)
-                .padding(5)
+                .padding(Padding::from([8, 16]))
                 .on_press(Message::ToggleTag(tag.clone()));
 
-            row = row.push(button);
+            tag_buttons = tag_buttons.push(button);
         }
 
-        if self.show_add_tag_button {
-            row = row.push(
-                Button::new(Text::new(t!("message.tag.new")))
-                    .style(Modern::secondary_button())
-                    .on_press(Message::CreateNewTagPressed),
-            );
-        }
-
-        if self.show_new_tag_input {
-            let input_row = Row::new()
-                .spacing(5)
-                .push(
-                    text_input("Type new tag", &self.new_tag_name)
-                        .on_input(Message::NewTagNameChanged)
-                        .on_submit(Message::CreateNewTag(self.new_tag_name.clone()))
-                        .style(Modern::text_input())
-                        .width(Length::FillPortion(95)),
+        // Add tag section
+        let add_tag_section = if self.show_add_tag_button {
+            if self.show_new_tag_input {
+                Container::new(
+                    Row::new()
+                        .spacing(10)
+                        .align_y(Alignment::Center)
+                        .push(
+                            text_input("Nome da nova tag", &self.new_tag_name)
+                                .on_input(Message::NewTagNameChanged)
+                                .on_submit(Message::CreateNewTag(self.new_tag_name.clone()))
+                                .style(Modern::text_input())
+                                .padding(Padding::from([8, 12]))
+                                .size(14)
+                                .width(Length::FillPortion(7)),
+                        )
+                        .push(
+                            Button::new(
+                                Container::new(fa_icon_solid("check").size(14.0))
+                                    .align_x(Alignment::Center)
+                                    .align_y(Alignment::Center),
+                            )
+                            .style(Modern::success_button())
+                            .on_press(Message::CreateNewTag(self.new_tag_name.clone()))
+                            .padding(Padding::from([8, 12]))
+                            .width(Length::FillPortion(1)),
+                        )
+                        .push(
+                            Button::new(
+                                Container::new(fa_icon_solid("xmark").size(14.0))
+                                    .align_x(Alignment::Center)
+                                    .align_y(Alignment::Center),
+                            )
+                            .style(Modern::danger_button())
+                            .on_press(Message::CancelNewTag)
+                            .padding(Padding::from([8, 12]))
+                            .width(Length::FillPortion(1)),
+                        ),
                 )
-                .push(
+                .padding(Padding::from([5, 0]))
+            } else {
+                Container::new(
                     Button::new(
-                        Container::new(fa_icon("circle-xmark").size(20.0))
-                            .align_x(Alignment::Center)
-                            .align_y(Alignment::Center),
+                        Row::new()
+                            .spacing(8)
+                            .align_y(Alignment::Center)
+                            .push(fa_icon_solid("plus").size(14.0))
+                            .push(Text::new(t!("message.tag.new")).size(14)),
                     )
-                    .style(Modern::danger_button())
-                    .on_press(Message::CancelNewTag)
-                    .padding(5)
-                    .width(Length::FillPortion(5)),
-                );
+                    .style(Modern::secondary_button())
+                    .padding(Padding::from([8, 16]))
+                    .on_press(Message::CreateNewTagPressed),
+                )
+                .padding(Padding::from([5, 0]))
+            }
+        } else {
+            Container::new(Space::with_height(0)).style(Modern::sheet_container())
+        };
 
-            row = row.push(input_row);
-        }
+        // Main content
+        let main_content = Column::new()
+            .spacing(15)
+            .push(Container::new(
+                Column::new().push(Container::new(tag_buttons.wrap())),
+            ))
+            .push(add_tag_section);
 
-        row.wrap().into()
+        Container::new(main_content).into()
     }
 
     pub fn selected_tags(&self) -> HashSet<TagDTO> {

@@ -32,6 +32,6 @@ pub fn push_success<S: Into<String>>(message: S) {
 }
 
 pub fn push_error<E: Into<String>>(err: E) {
-    let toast = Toast::new(ToastKind::Success, err.into(), Duration::from_secs(3));
+    let toast = Toast::new(ToastKind::Error, err.into(), Duration::from_secs(3));
     push_toast(toast);
 }

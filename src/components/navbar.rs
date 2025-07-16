@@ -1,7 +1,7 @@
 use crate::config::Settings;
 use iced::alignment::Horizontal;
 use iced::widget::{Column, button, container, scrollable, text};
-use iced::{Element, Length, Task};
+use iced::{Element, Length, Padding, Task};
 use iced_modern_theme::Modern;
 use log::info;
 use rust_i18n::t;
@@ -68,8 +68,13 @@ impl Navbar {
         ) -> iced::widget::Button<'static, Message> {
             let base = button(text(label).width(Length::Fill).align_x(Horizontal::Center))
                 .width(Length::Fill)
-                .height(Length::Fixed(45.0))
-                .padding(10)
+                .height(Length::Fixed(48.0))
+                .padding(Padding {
+                    top: 12.0,
+                    right: 16.0,
+                    bottom: 12.0,
+                    left: 16.0,
+                })
                 .on_press(Message::ButtonSignal(id));
 
             if id == selected {
@@ -113,18 +118,23 @@ impl Navbar {
                 NavButton::Preferences,
                 self.selected,
             )
-            .padding(10)
+            .padding(Padding {
+                top: 12.0,
+                right: 16.0,
+                bottom: 12.0,
+                left: 16.0,
+            })
             .on_press(Message::ButtonSignal(NavButton::Preferences)),
         );
 
         let layout = Column::new()
-            .push(navbar.height(Length::Fixed(195.0)))
+            .push(navbar.height(Length::Fixed(225.0)))
             .push(empty_middle.height(Length::Fill))
-            .push(settings_button.height(Length::Fixed(45.0)))
+            .push(settings_button.height(Length::Fixed(48.0)))
             .spacing(10);
 
         container(layout)
-            .width(Length::Fixed(250.0))
+            .width(Length::Fixed(280.0))
             .height(Length::Fill)
             .padding(5)
             .style(Modern::sidebar_container())

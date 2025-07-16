@@ -5,6 +5,9 @@ search:
   button:
     search: "Buscar"
     register: "Registrar"
+    next: "Proxima"
+    previous: "Anterior"
+
   input:
     description: "Digite a descrição"
   order:
@@ -12,31 +15,54 @@ search:
     oldest: "Mais antigo"
 
 register:
+  status:
+    incomplete: "Incompleto"
+    ready: "Completo"
+  section:
+    image: "Imagem"
+    description: "Descrição"
+    tags: "Tags"
   tooltip:
-    select_image: "Nenhuma imagem selecionada"
+    select_file: "Nenhuma imagem selecionada"
   button:
-    add_image: "Adicionar Imagem"
-    select_image: "Selecionar Imagem"
-  input:
+    submit: "Adicionar Imagem"
+    submitting: "Imagem em processamento"
+    select_file: "Selecionar Imagem"
+  placeholder:
     description: "Descrição"
 
 update:
   button:
     save: "Salvar"
-  tooltip:
-    current_image: "Imagem Atual"
+    updating: "Atualizando"
+  status:
+    no_changes: "Nenhuma mudança"
+    changes_detected: "Alterações"
+  changes:
     description: "Descrição será alterada"
     tags: "Tags serão alteradas"
+  section:
+    current_image: "Imagem Atual"
+    description: "Descrição"
+    tags: "Tags"
 
 preferences:
   title: "Preferências"
+  subtitle: "Configure suas preferências"
   label:
     language: "Idioma:"
     theme: "Tema:"
     items_per_page: "Itens por página (1-100):"
+    thumb_compression: "Compressão da Miniatura:"
+    image_compression: "Compressão da Imagem:"
   select:
     language: "Selecione um idioma"
     theme: "Selecione um tema"
+  compression:
+    low: "Baixo"
+    medium: "Médio"
+    high: "Alto"
+    max: "Máximo"
 
 navbar:
   button:
@@ -51,16 +77,33 @@ navbar:
     edit_image: "Editar Imagem"
 
 manage_tags:
+  title: "Gerenciar Tags"
+  subtitle: "Gerencie suas tags"
+  add_form:
+    title: "Adicionar Tag"
+  table:
+    name_header: "Nome"
+    color_header: "Cor"
+    actions_header: "Ações"
   button:
-    add: "Adicionar"
+    create: "Criar"
     save: "Salvar"
     delete: "Excluir"
     edit: "Editar"
     cancel: "Cancelar"
   input:
+    name_placeholder: "Nome da Tag"
     description: "Nome da Tag"
 
 message:
+  image:
+    container:
+      edit: "Editar Imagem"
+      delete: "Excluir Imagem"
+      open: "Visualizar Imagem"
+      copy: "Copiar Imagem"
+      open_local: "Abrir Imagem Local"
+      
   copy:
     success: "Imagem copiada para clipboard"
     error: "Erro ao copiar imagem para clipboard"
@@ -74,9 +117,10 @@ message:
     success: "Imagem excluida com sucesso"
     error: "Erro ao excluir imagem"
   tag:
-    new: "+ Nova Tag"
+    new: "Nova Tag"
     success: "Tag adicionada com sucesso"
     error: "Erro ao adicionar tag"
+    empty: "O campo de tag deve ser preenchido"
   open:
     success: "Imagem aberta com sucesso"
     error: "Erro ao abrir imagem"
@@ -98,5 +142,5 @@ tag:
     purple: "Roxo"
     pink: "Rosa"
     indigo: "Indigo"
-    teal: "Azul-escuro"
+    teal: "Azul-marinho"
     gray: "Cinza"

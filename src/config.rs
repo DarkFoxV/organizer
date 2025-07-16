@@ -1,12 +1,10 @@
-use std::error;
-use std::fs;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-
+use crate::utils::get_assets_path;
 use log::{debug, error, info};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-
-use crate::utils::get_assets_path;
+use std::error;
+use std::fs;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Main structure holding runtime settings
 #[derive(Debug, Clone)]
@@ -57,6 +55,8 @@ pub struct Config {
     pub theme: String,
     pub language: String,
     pub items_per_page: u64,
+    pub thumb_compression: Option<u8>,
+    pub image_compression: Option<u8>,
 }
 
 impl Default for Config {
@@ -65,6 +65,8 @@ impl Default for Config {
             theme: "dark".to_string(),
             language: "en".to_string(),
             items_per_page: 35,
+            thumb_compression: Some(9),
+            image_compression: Some(5),
         }
     }
 }

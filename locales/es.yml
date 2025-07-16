@@ -5,85 +5,127 @@ search:
   button:
     search: "Buscar"
     register: "Registrar"
+    next: "Siguiente"
+    previous: "Anterior"
+
   input:
     description: "Ingrese la descripción"
   order:
-    newest: "Recientes"
-    oldest: "Antiguas"
+    newest: "Más reciente"
+    oldest: "Más antiguo"
 
 register:
+  status:
+    incomplete: "Incompleto"
+    ready: "Completo"
+  section:
+    image: "Imagen"
+    description: "Descripción"
+    tags: "Etiquetas"
   tooltip:
-    select_image: "Ninguna imagen seleccionada"
+    select_file: "Ninguna imagen seleccionada"
   button:
-    add_image: "Agregar Imagen"
-    select_image: "Seleccionar Imagen"
-  input:
+    submit: "Agregar imagen"
+    submitting: "Imagen en procesamiento"
+    select_file: "Seleccionar imagen"
+  placeholder:
     description: "Descripción"
 
 update:
   button:
     save: "Guardar"
-  tooltip:
-    current_image: "Imagen Actual"
-    description: "La descripción será modificada"
-    tags: "Las etiquetas serán modificadas"
+    updating: "Actualizando"
+  status:
+    no_changes: "Sin cambios"
+    changes_detected: "Cambios detectados"
+  changes:
+    description: "La descripción será cambiada"
+    tags: "Las etiquetas serán cambiadas"
+  section:
+    current_image: "Imagen actual"
+    description: "Descripción"
+    tags: "Etiquetas"
 
 preferences:
   title: "Preferencias"
+  subtitle: "Configure sus preferencias"
   label:
     language: "Idioma:"
     theme: "Tema:"
-    items_per_page: "Ítems por página (1-100):"
+    items_per_page: "Artículos por página (1-100):"
+    thumb_compression: "Compresión de miniatura:"
+    image_compression: "Compresión de imagen:"
   select:
     language: "Seleccione un idioma"
     theme: "Seleccione un tema"
+  compression:
+    low: "Bajo"
+    medium: "Medio"
+    high: "Alto"
+    max: "Máximo"
 
 navbar:
   button:
     home: "Inicio"
-    search: "Buscar Imágenes"
+    search: "Buscar imágenes"
     register: "Registrar"
-    workspace: "Espacio de Trabajo"
-    manage_tags: "Gestionar Etiquetas"
+    workspace: "Espacio de trabajo"
+    manage_tags: "Gestionar etiquetas"
     settings: "Configuraciones"
-
   tooltip:
-    edit_image: "Editar Imagen"
+    edit_image: "Editar imagen"
 
 manage_tags:
+  title: "Gestionar etiquetas"
+  subtitle: "Gestione sus etiquetas"
+  add_form:
+    title: "Agregar etiqueta"
+  table:
+    name_header: "Nombre"
+    color_header: "Color"
+    actions_header: "Acciones"
   button:
-    add: "Agregar"
+    create: "Crear"
     save: "Guardar"
     delete: "Eliminar"
     edit: "Editar"
     cancel: "Cancelar"
   input:
-    description: "Nombre de la Etiqueta"
+    name_placeholder: "Nombre de la etiqueta"
+    description: "Nombre de la etiqueta"
 
 message:
+  image:
+    container:
+      edit: "Editar imagen"
+      delete: "Eliminar imagen"
+      open: "Ver imagen"
+      copy: "Copiar imagen"
+      open_local: "Abrir imagen local"
   copy:
     success: "Imagen copiada al portapapeles"
-    error: "Error al copiar imagen al portapapeles"
+    error: "Error al copiar la imagen al portapapeles"
   register:
     success: "Imagen registrada con éxito"
-    error: "Error al registrar imagen"
+    error: "Error al registrar la imagen"
   update:
     success: "Imagen actualizada con éxito"
-    error: "Error al actualizar imagen"
+    error: "Error al actualizar la imagen"
   delete:
     success: "Imagen eliminada con éxito"
-    error: "Error al eliminar imagen"
+    error: "Error al eliminar la imagen"
   tag:
-    new: "+ Nueva Etiqueta"
+    new: "Nueva etiqueta"
     success: "Etiqueta agregada con éxito"
-    error: "Error al agregar etiqueta"
+    error: "Error al agregar la etiqueta"
+    empty: "El campo de etiqueta debe ser completado"
   open:
     success: "Imagen abierta con éxito"
-    error: "Error al abrir imagen"
+    error: "Error al abrir la imagen"
   manage_tags:
     delete:
       success: "Etiqueta eliminada con éxito"
-      error: "Error al eliminar etiqueta"
+      error: "Error al eliminar la etiqueta"
     update:
       success: "Etiquetas actualizadas con éxito"
       error: "Error al actualizar etiquetas"
@@ -95,8 +137,8 @@ tag:
     yellow: "Amarillo"
     green: "Verde"
     blue: "Azul"
-    purple: "Morado"
+    purple: "Púrpura"
     pink: "Rosa"
-    indigo: "Indigo"
-    teal: "Azul Marino"
+    indigo: "Índigo"
+    teal: "Verde azulado"
     gray: "Gris"

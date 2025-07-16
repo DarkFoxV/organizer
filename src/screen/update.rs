@@ -1,17 +1,18 @@
 use crate::components::tag_selector;
 use crate::components::tag_selector::{Message as TagSelectorMessage, TagSelector};
+use crate::dtos::image_dto::{ImageDTO, ImageUpdateDTO};
+use crate::dtos::tag_dto::TagDTO;
 use crate::services::toast_service::{push_error, push_success};
 use crate::services::{image_service, tag_service};
-use iced::alignment::Vertical;
 use iced::widget::image::Handle;
-use iced::widget::{Button, Column, Container, Image, Row, Space, Text, button, text_input};
-use iced::{Alignment, Element, Length, Task};
-use iced_font_awesome::fa_icon;
+use iced::widget::{
+    Button, Column, Container, Image, Row, Scrollable, Space, Text, button, text_input,
+};
+use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Task};
+use iced_font_awesome::fa_icon_solid;
 use iced_modern_theme::Modern;
 use log::{error, info};
 use std::collections::HashSet;
-use crate::dtos::image_dto::{ImageDTO, ImageUpdateDTO};
-use crate::dtos::tag_dto::TagDTO;
 
 pub enum Action {
     None,
@@ -91,17 +92,19 @@ impl Update {
             }
 
             Message::Submit { description, tags } => {
+                if self.submitted {
+                    return Action::None;
+                }
+
                 let image_id = self.image_dto.id;
                 let task = Task::perform(
                     async move {
                         let mut update_dto = ImageUpdateDTO::default();
 
-                        // Só atualiza se a descrição mudou
                         if !description.is_empty() {
                             update_dto.description = Some(description);
                         }
 
-                        // Só atualiza se as tags mudaram
                         if !tags.is_empty() {
                             update_dto.tags = Some(tags);
                         }
@@ -121,6 +124,7 @@ impl Update {
                     },
                 );
 
+                self.submitted = true;
                 Action::Run(task)
             }
             Message::NavigateToSearch => Action::GoToSearch,
@@ -132,106 +136,288 @@ impl Update {
     pub fn view(&self) -> Element<Message> {
         let handle = Handle::from_path(&self.image_dto.thumbnail_path);
 
-        // Header with image on the left and close button on the right
-        let header_row = Row::new()
-            .width(Length::Fill)
-            .align_y(Vertical::Top)
-            .spacing(20)
-            .push(
-                // Image on the left
-                Column::new()
-                    .spacing(10)
-                    .push(Text::new(t!("update.tooltip.current_image")))
-                    .push(
-                        Container::new(Image::new(handle).width(200.0).height(200.0))
-                            .padding(10)
-                            .style(Modern::accent_container()),
-                    ),
-            )
-            .push(Space::with_width(Length::Fill))
-            .push(
-                // Close button on the right (at the top)
-                button(
-                    Container::new(fa_icon("circle-xmark").size(20.0))
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .align_x(Alignment::Center)
-                        .align_y(Alignment::Center),
+        // Header
+        let header = Container::new(
+            Row::new()
+                .width(Length::Fill)
+                .align_y(Alignment::Center)
+                .push(Space::with_width(Length::Fill))
+                .push(
+                    button(
+                        Container::new(fa_icon_solid("xmark").size(20.0))
+                            .width(Length::Fill)
+                            .height(Length::Fill)
+                            .align_x(Alignment::Center)
+                            .align_y(Alignment::Center),
+                    )
+                    .width(Length::Fixed(40.0))
+                    .height(Length::Fixed(40.0))
+                    .on_press(Message::NavigateToSearch)
+                    .style(Modern::danger_button()),
+                ),
+        )
+        .padding(Padding {
+            top: 10.0,
+            right: 22.5,
+            bottom: 0.0,
+            left: 22.5,
+        })
+        .width(Length::Fill);
+
+        // Image section
+        let image_section = Container::new(
+            Column::new()
+                .spacing(20)
+                .push(
+                    Text::new(t!("update.section.current_image"))
+                        .size(20)
+                        .font(iced::Font::MONOSPACE),
                 )
-                .width(Length::Fixed(30.0))
-                .height(Length::Fixed(30.0))
-                .on_press(Message::NavigateToSearch)
-                .style(Modern::danger_button()),
-            );
+                .push(
+                    Container::new(Image::new(handle).width(300.0).height(300.0))
+                        .padding(15)
+                        .style(Modern::sheet_container())
+                        .align_x(Alignment::Center),
+                )
+                .align_x(Alignment::Center),
+        )
+        .align_x(Alignment::Center)
+        .align_y(Alignment::Center)
+        .padding(30)
+        .style(Modern::card_container())
+        .width(Length::Fill);
 
-        let tags_view = self.tag_selector.view().map(Message::TagSelectorMessage);
+        // Description section
+        let description_section = Container::new(
+            Column::new()
+                .spacing(15)
+                .push(
+                    Row::new()
+                        .spacing(10)
+                        .align_y(Alignment::Center)
+                        .push(fa_icon_solid("file-lines").size(20.0))
+                        .push(
+                            Text::new(t!("update.section.description"))
+                                .size(20)
+                                .font(iced::Font::MONOSPACE),
+                        ),
+                )
+                .push(
+                    text_input(t!("register_input.description").as_ref(), &self.description)
+                        .style(Modern::text_input())
+                        .padding(Padding::from([12, 16]))
+                        .size(16)
+                        .on_input(Message::DescriptionChanged),
+                ),
+        )
+        .padding(30)
+        .style(Modern::card_container())
+        .width(Length::Fill);
 
-        let mut form = Column::new()
-            .padding(20)
-            .spacing(20)
-            .push(header_row)
-            .push(
-                text_input(t!("register_input.description").as_ref(), &self.description)
-                    .style(Modern::text_input())
-                    .on_input(Message::DescriptionChanged),
-            )
-            .push(Text::new("Tags:"))
-            .push(tags_view);
+        // Tag section
+        let tags_section = Container::new(
+            Column::new()
+                .spacing(15)
+                .push(
+                    Row::new()
+                        .spacing(10)
+                        .align_y(Alignment::Center)
+                        .push(fa_icon_solid("tags").size(20.0))
+                        .push(
+                            Text::new(t!("update.section.tags"))
+                                .size(20)
+                                .font(iced::Font::MONOSPACE),
+                        ),
+                )
+                .push(if self.tags_loaded {
+                    self.tag_selector.view().map(Message::TagSelectorMessage)
+                } else {
+                    Container::new(
+                        Row::new()
+                            .spacing(10)
+                            .align_y(Alignment::Center)
+                            .push(fa_icon_solid("spinner").size(16.0))
+                            .push(
+                                Text::new(t!("update.loading.tags"))
+                                    .size(16)
+                                    .color(Color::from_rgb(0.6, 0.6, 0.6)),
+                            ),
+                    )
+                    .padding(20)
+                    .style(Modern::floating_container())
+                    .into()
+                }),
+        )
+        .padding(30)
+        .style(Modern::card_container())
+        .width(Length::Fill);
 
-        // Check for changes
+        // Field validation
         let description_changed = self.description != self.original_description;
         let tags_changed = self.tag_selector.selected_tags() != self.image_dto.tags;
         let has_changes = description_changed || tags_changed;
 
-        // Check if required fields are filled
         let description_valid = !self.description.trim().is_empty();
         let tags_valid = !self.tag_selector.selected.is_empty();
 
-        let ready = has_changes && description_valid && tags_valid && self.tags_loaded && !self.submitted;
+        let ready =
+            has_changes && description_valid && tags_valid && self.tags_loaded && !self.submitted;
 
-        // Action button - always visible but conditionally enabled/disabled
-        let mut save_button = Button::new(Text::new(t!("update.button.save")));
-
-        if ready {
-            save_button = save_button
-                .on_press(Message::Submit {
-                    description: self.description.clone(),
-                    tags: self.tag_selector.selected_tags(),
-                })
-                .style(Modern::primary_button());
-        } else {
-            save_button = save_button.style(Modern::secondary_button());
-        }
-
-        let button_row = Column::new().spacing(10).push(save_button);
-
-        form = form.push(button_row);
-
-        // Changes information
-        if has_changes {
-            let mut changes_info = Column::new().spacing(5);
+        // Section of changes
+        let changes_status = if has_changes {
+            let mut changes_list = Column::new().spacing(8);
 
             if description_changed {
-                changes_info = changes_info.push(
-                    Text::new("• ".to_owned() + t!("update.tooltip.description").as_ref())
-                        .style(Modern::primary_text()),
+                changes_list = changes_list.push(
+                    Row::new()
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .push(fa_icon_solid("circle-dot").size(12.0))
+                        .push(
+                            Text::new(t!("update.changes.description"))
+                                .size(14)
+                                .color(Color::from_rgb(0.2, 0.6, 0.8)),
+                        ),
                 );
             }
 
             if tags_changed {
-                changes_info = changes_info.push(
-                    Text::new("• ".to_owned() + t!("update.tooltip.tags").as_ref())
-                        .style(Modern::primary_text()),
+                changes_list = changes_list.push(
+                    Row::new()
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .push(fa_icon_solid("circle-dot").size(12.0))
+                        .push(
+                            Text::new(t!("update.changes.tags"))
+                                .size(14)
+                                .color(Color::from_rgb(0.2, 0.6, 0.8)),
+                        ),
                 );
             }
 
-            form = form.push(
-                Container::new(changes_info)
-                    .padding(10)
-                    .style(Modern::sheet_container()),
-            );
-        }
+            Container::new(
+                Column::new()
+                    .spacing(10)
+                    .push(
+                        Row::new()
+                            .spacing(10)
+                            .align_y(Alignment::Center)
+                            .push(fa_icon_solid("exclamation-triangle").size(16.0))
+                            .push(
+                                Text::new(t!("update.status.changes_detected"))
+                                    .size(16)
+                                    .color(Color::from_rgb(0.8, 0.6, 0.2)),
+                            ),
+                    )
+                    .push(changes_list),
+            )
+            .padding(20)
+            .style(|_theme: &iced::Theme| iced::widget::container::Style {
+                background: Some(Background::Color(Color::from_rgb(1.0, 0.98, 0.9))),
+                border: Border {
+                    radius: iced::border::Radius::from(8.0),
+                    color: Color::from_rgb(0.9, 0.8, 0.6),
+                    width: 1.0,
+                },
+                shadow: Shadow::default(),
+                text_color: None,
+            })
+            .width(Length::Fill)
+        } else {
+            Container::new(
+                Row::new()
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .push(fa_icon_solid("check-circle").size(16.0))
+                    .push(
+                        Text::new(t!("update.status.no_changes"))
+                            .size(16)
+                            .color(Color::from_rgb(0.5, 0.5, 0.5)),
+                    ),
+            )
+            .padding(20)
+            .style(|_theme: &iced::Theme| iced::widget::container::Style {
+                background: Some(Background::Color(Color::from_rgb(0.97, 0.97, 0.97))),
+                border: Border {
+                    radius: iced::border::Radius::from(8.0),
+                    color: Color::from_rgb(0.9, 0.9, 0.9),
+                    width: 1.0,
+                },
+                shadow: Shadow::default(),
+                text_color: None,
+            })
+            .width(Length::Fill)
+        };
 
-        form.into()
+        // Action section
+        let action_section = Container::new(
+            Column::new()
+                .spacing(20)
+                .align_x(Alignment::Center)
+                .push(changes_status)
+                .push({
+                    let mut button = Button::new(
+                        Row::new()
+                            .spacing(12)
+                            .align_y(Alignment::Center)
+                            .push(
+                                fa_icon_solid(if self.submitted {
+                                    "hourglass-half"
+                                } else {
+                                    "floppy-disk"
+                                })
+                                .size(18.0),
+                            )
+                            .push(
+                                Text::new(if self.submitted {
+                                    t!("update.button.updating")
+                                } else {
+                                    t!("update.button.save")
+                                })
+                                .size(16),
+                            ),
+                    )
+                    .padding(Padding::from([15, 30]));
+
+                    if ready {
+                        button = button
+                            .style(Modern::success_button())
+                            .on_press(Message::Submit {
+                                description: self.description.clone(),
+                                tags: self.tag_selector.selected_tags(),
+                            });
+                    } else if self.submitted {
+                        button = button.style(Modern::plain_button());
+                    } else {
+                        button = button.style(Modern::secondary_button());
+                    }
+
+                    button
+                }),
+        )
+        .padding(30)
+        .style(Modern::floating_container())
+        .width(Length::Fill);
+
+        // Main content
+        let main_content = Column::new().spacing(20).push(header).push(
+            Scrollable::new(
+                Column::new()
+                    .padding(20)
+                    .spacing(20)
+                    .push(image_section)
+                    .push(description_section)
+                    .push(tags_section)
+                    .push(Space::with_height(20))
+                    .push(action_section),
+            )
+            .width(Length::Fill)
+            .height(Length::Fill),
+        );
+
+        Container::new(main_content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 }
