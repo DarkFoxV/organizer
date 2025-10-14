@@ -16,14 +16,14 @@ pub enum Message {
     CreateNewTagPressed,
     NewTagNameChanged(String),
     CreateNewTag(String),
-    TagCreateResult(Result<Vec<TagDTO>, String>),
+    TagCreateResult(Result<HashSet<TagDTO>, String>),
     CancelNewTag,
 }
 
 #[derive(Debug, Clone)]
 pub struct TagSelector {
     pub selected: HashSet<TagDTO>,
-    pub available: Vec<TagDTO>,
+    pub available: HashSet<TagDTO>,
     show_add_tag_button: bool,
     show_new_tag_input: bool,
     new_tag_name: String,
@@ -31,10 +31,10 @@ pub struct TagSelector {
 }
 
 impl TagSelector {
-    pub fn new(available: Vec<TagDTO>, show_add_tag_button: bool, colorized: bool) -> Self {
+    pub fn new(selected: HashSet<TagDTO>, show_add_tag_button: bool, colorized: bool) -> Self {
         Self {
-            selected: HashSet::new(),
-            available,
+            selected,
+            available: HashSet::new(),
             show_add_tag_button,
             show_new_tag_input: false,
             new_tag_name: String::new(),
@@ -100,10 +100,12 @@ impl TagSelector {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        // Tags disponíveis
         let mut tag_buttons = Row::new().spacing(8);
 
-        for tag in &self.available {
+        let mut elements: Vec<_> = self.available.iter().collect();
+        elements.sort_by(|a, b| a.name.cmp(&b.name));
+
+        for tag in elements {
             let selected = self.selected.contains(tag);
             let label = capitalize_first(&tag.name);
 

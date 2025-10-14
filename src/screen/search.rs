@@ -1,7 +1,7 @@
 use crate::components::image_container::ImageContainer;
 use crate::components::tag_selector;
 use crate::components::tag_selector::TagSelector;
-use crate::config::get_settings;
+use crate::config::{SAVED_DESCRIPTION, SAVED_TAGS, get_settings};
 use crate::dtos::image_dto::ImageDTO;
 use crate::dtos::tag_dto::TagDTO;
 use crate::models::filter::{Filter, SortOrder};
@@ -13,11 +13,12 @@ use iced::widget::image::{Handle, viewer};
 use iced::widget::{
     Button, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput, button,
 };
-use iced::{Alignment, Background, Border, Color, Element, Length, Task, Theme};
+use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Task, Theme};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use iced_modern_theme::Modern;
 use image::DynamicImage;
 use log::{error, info};
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
 
@@ -35,18 +36,22 @@ pub enum Message {
     DelayedQuery(String, u64),
     SearchButtonPressed,
     RequestImages,
-    PushContainer(Vec<ImageDTO>, u64, u64),
-    OpenImage(i64),
+    PushContainer(Vec<ImageDTO>, u64, u64, bool),
+    OpenImage(ImageDTO),
     OpenLocalImage(i64),
     DeleteImage(ImageDTO),
+    DeleteImageFromFolder(ImageDTO),
     CopyImage(String),
-    TagsLoaded(Vec<TagDTO>),
+    TagsLoaded(HashSet<TagDTO>),
     GoToPage(u64),
     Update(ImageDTO),
     ClosePreview,
+    CloseFolder,
     NavigateToRegister,
     SortOrderChanged(SortOrder),
     ImagePasted(DynamicImage),
+    PreviousImage,
+    NextImage,
     NoOps,
 }
 
@@ -59,51 +64,70 @@ pub struct Search {
     total_pages: u64,
     show_preview: bool,
     preview_handle: Handle,
+    current_preview_index: usize,
     selected_sort_order: SortOrder,
     current_search_id: u64,
+    folder_opened: bool,
 }
 
 impl Search {
     pub fn new() -> (Self, Task<Message>) {
         let settings = get_settings();
         let page_size = settings.config.items_per_page;
-        (
-            Self {
-                query: String::new(),
-                images: vec![],
-                tag_selector: TagSelector::new(Vec::new(), false, true),
-                page_size,
-                current_page: 0,
-                total_pages: 0,
-                show_preview: false,
-                preview_handle: Handle::from_path("".to_string()),
-                selected_sort_order: SortOrder::CreatedDesc,
-                current_search_id: 0,
-            },
-            Task::batch([
-                Task::perform(async { tag_service::find_all().await }, |tags| {
-                    Message::TagsLoaded(tags.expect("REASON"))
-                }),
-                Task::perform(
-                    async move {
-                        let page = image_service::find_all(Filter::new(), 0, page_size)
-                            .await
-                            .unwrap();
-                        (page.content, page.page_number, page.total_pages)
-                    },
-                    |(images, current_page, total_pages)| {
-                        Message::PushContainer(images, current_page, total_pages)
-                    },
-                ),
-            ]),
-        )
+        let query = SAVED_DESCRIPTION.lock().unwrap().clone();
+        let selected_tags = SAVED_TAGS.lock().unwrap().clone();
+        let component = Self {
+            query: query.clone(),
+            images: vec![],
+            tag_selector: TagSelector::new(selected_tags.clone(), false, true),
+            page_size,
+            current_page: 0,
+            total_pages: 0,
+            show_preview: false,
+            preview_handle: Handle::from_path("".to_string()),
+            current_preview_index: 0,
+            selected_sort_order: SortOrder::CreatedDesc,
+            current_search_id: 0,
+            folder_opened: false,
+        };
+
+        let task = Task::batch([
+            Task::perform(
+                async { tag_service::find_all().await },
+                |result| match result {
+                    Ok(tags) => Message::TagsLoaded(tags),
+                    Err(_err) => {
+                        push_error("Program failed to load tags");
+                        Message::NoOps
+                    }
+                },
+            ),
+            Task::perform(
+                async move {
+                    let mut filter = Filter::new();
+                    filter.query = query;
+                    filter.tags = selected_tags.iter().map(|tag| tag.name.clone()).collect();
+
+                    match image_service::find_all(filter, 0, page_size).await {
+                        Ok(page) => (page.content, page.page_number, page.total_pages),
+                        Err(_) => (vec![], 0, 0),
+                    }
+                },
+                |(images, current_page, total_pages)| {
+                    Message::PushContainer(images, current_page, total_pages, false)
+                },
+            ),
+        ]);
+
+        (component, task)
     }
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
             Message::QueryChanged(query) => {
                 self.query = query.clone();
-
+                let mut saved_query = SAVED_DESCRIPTION.lock().unwrap();
+                *saved_query = query.clone();
                 self.current_search_id += 1;
                 let search_id = self.current_search_id;
 
@@ -143,10 +167,14 @@ impl Search {
             Message::OpenLocalImage(id) => {
                 let img = self.images.iter().find(|img| img.id == id).unwrap();
 
-                let path_buf = Path::new(&img.image_dto.path)
-                    .parent()
-                    .expect("Image path should have a parent")
-                    .to_path_buf();
+                let path_buf = if !img.image_dto.is_folder {
+                    Path::new(&img.image_dto.path)
+                        .parent()
+                        .expect("Image path should have a parent")
+                        .to_path_buf()
+                } else {
+                    Path::new(&img.image_dto.path).to_path_buf()
+                };
 
                 let task = Task::perform(
                     async move {
@@ -181,8 +209,16 @@ impl Search {
                 self.images.retain(|img| img.id != dto.id);
                 let task = Task::perform(
                     async move {
-                        file_service::delete_image_by_path(&dto.path).await.unwrap();
-                        image_service::delete_image(dto.id).await.unwrap();
+                        // Usar a nova função de deleção inteligente
+                        // from_folder = false (imagem principal/pasta)
+                        if let Err(e) = file_service::delete_image_smart(&dto.path, false).await {
+                            error!("Failed to delete image files: {}", e);
+                        }
+
+                        // Deletar do banco de dados
+                        if let Err(e) = image_service::delete_image(dto.id).await {
+                            error!("Failed to delete image from database: {}", e);
+                        }
                     },
                     |_| {
                         push_success(t!("message.delete.success"));
@@ -192,7 +228,25 @@ impl Search {
                 Action::Run(task)
             }
 
-            Message::PushContainer(images, current_page, total_pages) => {
+            Message::DeleteImageFromFolder(dto) => {
+                self.images.retain(|img| img.id != dto.id);
+                let task = Task::perform(
+                    async move {
+                        // Usar a nova função de deleção inteligente
+                        // from_folder = true (arquivo dentro de uma pasta)
+                        if let Err(e) = file_service::delete_image_smart(&dto.path, true).await {
+                            error!("Failed to delete image file from folder: {}", e);
+                        }
+                    },
+                    |_| {
+                        push_success(t!("message.delete.success"));
+                        Message::NoOps
+                    },
+                );
+                Action::Run(task)
+            }
+
+            Message::PushContainer(images, current_page, total_pages, is_from_folder) => {
                 info!("Pushing {} images", images.len());
                 for img in images {
                     info!("Pushing image {}", img.id);
@@ -200,7 +254,8 @@ impl Search {
                         "Tags: {:?}",
                         img.tags.iter().map(|t| &t.name).collect::<Vec<_>>()
                     );
-                    self.images.push(ImageContainer::new(img.clone()));
+                    self.images
+                        .push(ImageContainer::new(img.clone(), is_from_folder));
                 }
 
                 self.current_page = current_page;
@@ -209,12 +264,71 @@ impl Search {
                 Action::None
             }
 
-            Message::OpenImage(id) => {
-                self.show_preview = true;
-                for img in &self.images {
-                    if img.id == id {
-                        self.preview_handle = Handle::from_path(img.image_dto.path.clone());
-                        break;
+            Message::OpenImage(image_dto) => {
+                if image_dto.is_folder {
+                    info!("Opening folder {}", image_dto.path);
+                    self.images.clear();
+                    self.folder_opened = true;
+                    self.show_preview = false;
+                    let task = Task::perform(
+                        async move {
+                            let sub_images = file_service::expand_folder_dto(&image_dto);
+                            sub_images
+                        },
+                        |sub_images| Message::PushContainer(sub_images, 0, 0, true),
+                    );
+                    Action::Run(task)
+                } else {
+                    // Find the index of the image being opened
+                    if let Some(index) = self
+                        .images
+                        .iter()
+                        .position(|img| img.image_dto.id == image_dto.id)
+                    {
+                        self.current_preview_index = index;
+                        self.show_preview = true;
+
+                        if image_dto.is_folder {
+                            self.preview_handle =
+                                Handle::from_path(image_dto.thumbnail_path.clone());
+                        } else {
+                            self.preview_handle = Handle::from_path(image_dto.path.clone());
+                        }
+                    }
+                    Action::None
+                }
+            }
+
+            Message::PreviousImage => {
+                if self.show_preview && !self.images.is_empty() {
+                    if self.current_preview_index > 0 {
+                        self.current_preview_index -= 1;
+                    } else {
+                        self.current_preview_index = self.images.len() - 1;
+                    }
+                    let current_image = &self.images[self.current_preview_index];
+                    if current_image.image_dto.is_folder {
+                        self.preview_handle = Handle::from_path(current_image.image_dto.thumbnail_path.clone());
+                    } else{
+                        self.preview_handle = Handle::from_path(current_image.image_dto.path.clone());
+                    }
+
+                }
+                Action::None
+            }
+
+            Message::NextImage => {
+                if self.show_preview && !self.images.is_empty() {
+                    if self.current_preview_index < self.images.len() - 1 {
+                        self.current_preview_index += 1;
+                    } else {
+                        self.current_preview_index = 0;
+                    }
+                    let current_image = &self.images[self.current_preview_index];
+                    if current_image.image_dto.is_folder {
+                        self.preview_handle = Handle::from_path(current_image.image_dto.thumbnail_path.clone());
+                    } else{
+                        self.preview_handle = Handle::from_path(current_image.image_dto.path.clone());
                     }
                 }
                 Action::None
@@ -223,7 +337,15 @@ impl Search {
             Message::ClosePreview => {
                 self.show_preview = false;
                 self.preview_handle = Handle::from_path("".to_string());
+                self.current_preview_index = 0;
                 Action::None
+            }
+
+            Message::CloseFolder => {
+                self.images.clear();
+                self.folder_opened = false;
+                let task = Task::perform(async {}, |_| Message::SearchButtonPressed);
+                Action::Run(task)
             }
 
             Message::TagsLoaded(tags) => {
@@ -233,6 +355,19 @@ impl Search {
 
             Message::TagSelectorMessage(msg) => {
                 let _ = self.tag_selector.update(msg);
+
+                let mut saved_tags = SAVED_TAGS.lock().unwrap();
+                saved_tags.clear();
+                for tag in &self.tag_selector.selected {
+                    saved_tags.insert(tag.clone());
+                }
+
+                // Debug log to verify tags are being saved
+                info!(
+                    "Saved tags to global: {:?}",
+                    saved_tags.iter().map(|t| &t.name).collect::<Vec<_>>()
+                );
+
                 let task = Task::perform(async move {}, |_| Message::SearchButtonPressed);
                 Action::Run(task)
             }
@@ -242,13 +377,12 @@ impl Search {
                 self.images.clear();
                 let query = self.query.clone();
                 let selected_tags = self.tag_selector.selected.clone();
-
                 let task = Task::perform(
                     async move {
                         let mut filter = Filter::new();
 
                         if !query.is_empty() {
-                            filter.query = query.clone();
+                            filter.query = query;
                         }
 
                         if !selected_tags.is_empty() {
@@ -261,9 +395,10 @@ impl Search {
                         (page.content, page.page_number, page.total_pages)
                     },
                     |(images, current_page, total_pages)| {
-                        Message::PushContainer(images, current_page, total_pages)
+                        Message::PushContainer(images, current_page, total_pages, false)
                     },
                 );
+
                 Action::Run(task)
             }
 
@@ -295,7 +430,7 @@ impl Search {
                         (page.content, page.page_number, page.total_pages)
                     },
                     |(images, current_page, total_pages)| {
-                        Message::PushContainer(images, current_page, total_pages)
+                        Message::PushContainer(images, current_page, total_pages, false)
                     },
                 );
 
@@ -318,6 +453,40 @@ impl Search {
     }
 
     pub fn view(&self) -> Element<Message> {
+        let close_folder: Element<Message> = if self.folder_opened {
+            Container::new(
+                Row::new()
+                    .width(Length::Fill)
+                    .align_y(Alignment::Center)
+                    .push(Space::with_width(Length::Fill))
+                    .push(
+                        button(
+                            Container::new(fa_icon_solid("xmark").size(20.0))
+                                .width(Length::Fill)
+                                .height(Length::Fill)
+                                .align_x(Alignment::Center)
+                                .align_y(Alignment::Center),
+                        )
+                        .width(Length::Fixed(40.0))
+                        .height(Length::Fixed(40.0))
+                        .on_press(Message::CloseFolder)
+                        .style(Modern::danger_button()),
+                    ),
+            )
+            .padding(Padding {
+                top: 10.0,
+                right: 22.5,
+                bottom: 0.0,
+                left: 22.5,
+            })
+            .width(Length::Fill)
+            .into()
+        } else {
+            Container::new(Space::new(Length::Shrink, Length::Shrink))
+                .width(Length::Fill)
+                .into()
+        };
+
         let tags_view = Container::new(self.tag_selector.view().map(Message::TagSelectorMessage))
             .width(Length::Fill)
             .padding(10)
@@ -420,12 +589,22 @@ impl Search {
                 .align_x(Alignment::Center)
                 .align_y(Alignment::Center)
         } else {
-            Container::new(Scrollable::new(
-                Container::new(images_row.wrap())
+            Container::new(
+                Column::new()
                     .width(Length::Fill)
-                    .align_x(Horizontal::Center)
-                    .padding(20),
-            ))
+                    .height(Length::Fill)
+                    .push(close_folder)
+                    .push(
+                        Scrollable::new(
+                            Container::new(images_row.wrap())
+                                .width(Length::Fill)
+                                .align_x(Horizontal::Center)
+                                .padding(20),
+                        )
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                    ),
+            )
             .width(Length::Fill)
             .height(Length::Fill)
         };
@@ -550,11 +729,18 @@ impl Search {
             .height(Length::Fill)
             .padding(20);
 
-        // Preview modal
         let image_preview = if self.show_preview {
+            let image_counter =
+                format!("{} / {}", self.current_preview_index + 1, self.images.len());
+
             let header: Row<_> = Row::new()
                 .width(Length::Fill)
                 .align_y(Vertical::Center)
+                .push(
+                    Text::new(image_counter)
+                        .size(16)
+                        .style(Modern::secondary_text()),
+                )
                 .push(Space::with_width(Length::Fill))
                 .push(
                     button(
@@ -570,21 +756,91 @@ impl Search {
                     .style(Modern::danger_button()),
                 );
 
-            let body = Container::new(
-                viewer(self.preview_handle.clone())
+            let prev_button = if self.images.len() > 1 {
+                button(
+                    Container::new(fa_icon_solid("chevron-left").size(24.0))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center),
+                )
+                .width(Length::Fixed(50.0))
+                .height(Length::Fixed(50.0))
+                .on_press(Message::PreviousImage)
+                .style(Modern::secondary_button())
+            } else {
+                button(
+                    Container::new(fa_icon_solid("chevron-left").size(24.0))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center),
+                )
+                .width(Length::Fixed(50.0))
+                .height(Length::Fixed(50.0))
+                .style(Modern::secondary_button())
+            };
+
+            let next_button = if self.images.len() > 1 {
+                button(
+                    Container::new(fa_icon_solid("chevron-right").size(24.0))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center),
+                )
+                .width(Length::Fixed(50.0))
+                .height(Length::Fixed(50.0))
+                .on_press(Message::NextImage)
+                .style(Modern::secondary_button())
+            } else {
+                button(
+                    Container::new(fa_icon_solid("chevron-right").size(24.0))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .align_x(Alignment::Center)
+                        .align_y(Alignment::Center),
+                )
+                .width(Length::Fixed(50.0))
+                .height(Length::Fixed(50.0))
+                .style(Modern::secondary_button())
+            };
+
+            let body_with_navigation = Row::new()
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_y(Alignment::Center)
+                .push(
+                    Container::new(prev_button)
+                        .width(Length::Fixed(70.0))
+                        .height(Length::Fill)
+                        .align_y(Alignment::Center)
+                        .padding([0, 10]),
+                )
+                .push(
+                    Container::new(
+                        viewer(self.preview_handle.clone())
+                            .width(Length::Fill)
+                            .height(Length::Fill),
+                    )
                     .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_x(Horizontal::Center)
-            .align_y(Vertical::Center);
+                    .height(Length::Fill)
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center),
+                )
+                .push(
+                    Container::new(next_button)
+                        .width(Length::Fixed(70.0))
+                        .height(Length::Fill)
+                        .align_y(Alignment::Center)
+                        .padding([0, 10]),
+                );
 
             let modal_content: Column<_> = Column::new()
                 .spacing(15)
                 .align_x(Horizontal::Center)
                 .push(header)
-                .push(body);
+                .push(body_with_navigation);
 
             let modal = Container::new(modal_content)
                 .padding(30)

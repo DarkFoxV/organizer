@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate rust_i18n;
+
 mod components;
 mod config;
 mod dtos;

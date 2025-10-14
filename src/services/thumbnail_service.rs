@@ -1,12 +1,13 @@
-use image::codecs::png::PngEncoder;
 use image::imageops::FilterType;
-use image::{DynamicImage, GenericImageView, ImageReader, ColorType, ImageEncoder};
-use std::fs;
-use std::io::Cursor;
+use image::{DynamicImage, GenericImageView, ImageReader, ColorType};
+use std::fs::File;
+use std::io::BufWriter;
 use std::path::Path;
 use std::time::Instant;
 use iced::advanced::image::Handle;
-use log::{info, debug};
+use log::info;
+use fast_image_resize as fr;
+use fast_image_resize::images::Image;
 
 // ===================================
 //         THUMBNAIL GENERATION
@@ -23,7 +24,7 @@ pub fn generate_thumbnail_from_image<P: AsRef<Path>>(
     let start_time = Instant::now();
 
     // Resize while maintaining aspect ratio
-    let resized = resize_preserving_aspect_ratio(image, max_width, max_height);
+    let resized = resize_with_fast_lib(image, max_width, max_height)?;
 
     // Save as PNG
     save_image_as_png(&resized, &output_path, compression_level)?;
@@ -53,14 +54,52 @@ fn resize_preserving_aspect_ratio(
 
     let (new_width, new_height) = calculate_dimensions(width, height, max_width, max_height);
 
-    // Choose filter based on resulting image size
-    let filter = if new_width <= 200 || new_height <= 200 {
-        FilterType::Triangle
-    } else {
-        FilterType::Lanczos3
-    };
+    let filter = FilterType::Gaussian;
 
     img.resize_exact(new_width, new_height, filter)
+}
+
+fn resize_with_fast_lib(
+    image: &DynamicImage,
+    max_width: u32,
+    max_height: u32,
+) -> Result<DynamicImage, Box<dyn std::error::Error>> {
+    let (new_width, new_height) = calculate_dimensions(
+        image.width(),
+        image.height(),
+        max_width,
+        max_height,
+    );
+
+    // Converter para RGBA primeiro
+    let mut rgba_image = image.to_rgba8();
+    let (orig_width, orig_height) = rgba_image.dimensions();
+
+    // Criar imagem de origem a partir do RGBA
+    let src_image = Image::from_slice_u8(
+        orig_width,
+        orig_height,
+        &mut rgba_image,
+        fr::PixelType::U8x4,
+    )?;
+
+    // Criar imagem de destino
+    let mut dst_image = Image::new(
+        new_width,
+        new_height,
+        fr::PixelType::U8x4,
+    );
+
+    // Fazer resize
+    let mut resizer = fr::Resizer::new();
+    resizer.resize(&src_image, &mut dst_image, None)?;
+
+    // Converter de volta para DynamicImage
+    let buffer = dst_image.into_vec();
+    let rgba_result = image::RgbaImage::from_raw(new_width, new_height, buffer)
+        .ok_or("Failed to create RgbaImage")?;
+
+    Ok(DynamicImage::ImageRgba8(rgba_result))
 }
 
 /// Calculates new dimensions while preserving aspect ratio
@@ -86,163 +125,52 @@ pub fn save_image_as_png<P: AsRef<Path>>(
     output_path: P,
     compression_level: u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Encode to PNG into buffer
-    let mut bytes = Vec::new();
+    let file = File::create(output_path)?;
+    let ref mut w = BufWriter::new(file);
 
-    // Define compression type based on level
-    let compression_type = match compression_level {
-        0..=3 => image::codecs::png::CompressionType::Fast,
-        4..=6 => image::codecs::png::CompressionType::Default,
-        7..=9 => image::codecs::png::CompressionType::Best,
-        _ => image::codecs::png::CompressionType::Default,
+    let mut encoder = png::Encoder::new(w, img.width(), img.height());
+
+    // Set color type based on image
+    match img.color() {
+        ColorType::L8 => encoder.set_color(png::ColorType::Grayscale),
+        ColorType::La8 => encoder.set_color(png::ColorType::GrayscaleAlpha),
+        ColorType::Rgb8 => encoder.set_color(png::ColorType::Rgb),
+        ColorType::Rgba8 => encoder.set_color(png::ColorType::Rgba),
+        ColorType::L16 => encoder.set_color(png::ColorType::Grayscale),
+        ColorType::La16 => encoder.set_color(png::ColorType::GrayscaleAlpha),
+        ColorType::Rgb16 => encoder.set_color(png::ColorType::Rgb),
+        ColorType::Rgba16 => encoder.set_color(png::ColorType::Rgba),
+        _ => encoder.set_color(png::ColorType::Rgba),
+    }
+
+    encoder.set_depth(png::BitDepth::Eight);
+
+    // Set compression level (0-9 → zlib levels)
+    let level = match compression_level {
+        0..=3 => png::Compression::Fast,
+        4..=6 => png::Compression::Balanced,
+        7..=9 => png::Compression::High,
+        _ => png::Compression::Balanced,
     };
+    encoder.set_compression(level);
+    encoder.set_filter(png::Filter::Sub);
 
-    let encoder = PngEncoder::new_with_quality(
-        Cursor::new(&mut bytes),
-        compression_type,
-        image::codecs::png::FilterType::Adaptive,
-    );
-
-    // Determine color type based on the image
-    let color_type = match img.color() {
-        ColorType::L8 => ColorType::L8,
-        ColorType::La8 => ColorType::La8,
-        ColorType::Rgb8 => ColorType::Rgb8,
-        ColorType::Rgba8 => ColorType::Rgba8,
-        ColorType::L16 => ColorType::L16,
-        ColorType::La16 => ColorType::La16,
-        ColorType::Rgb16 => ColorType::Rgb16,
-        ColorType::Rgba16 => ColorType::Rgba16,
-        _ => ColorType::Rgba8, // Fallback to RGBA8
-    };
-
-    encoder.write_image(
-        img.as_bytes(),
-        img.width(),
-        img.height(),
-        color_type.into(),
-    )?;
-
-    // Save to disk
-    fs::write(output_path, bytes)?;
+    let mut writer = encoder.write_header()?;
+    writer.write_image_data(img.as_bytes())?;
 
     Ok(())
 }
 
 // ===================================
-//         IMAGE LOADING AND FIXING
+//         IMAGE LOADING
 // ===================================
 
-/// Opens and tries to fix an image
-pub fn open_and_fix_image<P: AsRef<Path>>(
+/// Opens an image file
+pub fn open_image<P: AsRef<Path>>(
     input_path: P,
 ) -> Result<DynamicImage, Box<dyn std::error::Error>> {
-    // First attempt: open normally
-    match ImageReader::open(&input_path) {
-        Ok(reader) => match reader.decode() {
-            Ok(img) => return Ok(img),
-            Err(e) => {
-                debug!("Error decoding image: {}. Trying to fix...", e);
-            }
-        },
-        Err(e) => {
-            debug!("Error opening file: {}. Trying to fix...", e);
-        }
-    }
-
-    // Second attempt: read raw bytes and try different formats
-    let bytes = fs::read(&input_path)?;
-
-    // Try different decoders
-    let formats = [
-        image::ImageFormat::Jpeg,
-        image::ImageFormat::Png,
-        image::ImageFormat::Gif,
-        image::ImageFormat::WebP,
-        image::ImageFormat::Tiff,
-        image::ImageFormat::Bmp,
-    ];
-
-    for format in &formats {
-        match image::load_from_memory_with_format(&bytes, *format) {
-            Ok(img) => {
-                debug!("Successfully decoded as {:?}", format);
-                return Ok(img);
-            }
-            Err(_) => continue,
-        }
-    }
-
-    // Third attempt: try to fix specific headers
-    if let Ok(img) = fix_and_decode_image(&bytes) {
-        debug!("Successfully fixed and decoded image");
-        return Ok(img);
-    }
-
-    Err("Could not open or fix the image".into())
-}
-
-/// Tries to fix and decode an image from bytes
-fn fix_and_decode_image(bytes: &[u8]) -> Result<DynamicImage, Box<dyn std::error::Error>> {
-    // Try to fix JPEG header
-    if bytes.len() > 10 && is_likely_jpeg(bytes) {
-        let mut fixed_bytes = bytes.to_vec();
-
-        // Check if SOI (Start of Image) marker is correct
-        if fixed_bytes[0] != 0xFF || fixed_bytes[1] != 0xD8 {
-            // Search for the actual JPEG start
-            for i in 0..fixed_bytes.len().saturating_sub(2) {
-                if fixed_bytes[i] == 0xFF && fixed_bytes[i + 1] == 0xD8 {
-                    fixed_bytes = fixed_bytes[i..].to_vec();
-                    break;
-                }
-            }
-        }
-
-        // Try to decode the fixed JPEG
-        if let Ok(img) = image::load_from_memory_with_format(&fixed_bytes, image::ImageFormat::Jpeg) {
-            return Ok(img);
-        }
-    }
-
-    // Try to fix PNG header
-    if bytes.len() > 8 && is_likely_png(bytes) {
-        let mut fixed_bytes = bytes.to_vec();
-
-        // Check PNG signature
-        let png_signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-        if &fixed_bytes[0..8] != png_signature {
-            // Search for the correct PNG signature
-            for i in 0..fixed_bytes.len().saturating_sub(8) {
-                if &fixed_bytes[i..i+8] == png_signature {
-                    fixed_bytes = fixed_bytes[i..].to_vec();
-                    break;
-                }
-            }
-        }
-
-        // Try to decode the fixed PNG
-        if let Ok(img) = image::load_from_memory_with_format(&fixed_bytes, image::ImageFormat::Png) {
-            return Ok(img);
-        }
-    }
-
-    Err("Could not fix image header".into())
-}
-
-/// Checks if the bytes are likely from a JPEG
-fn is_likely_jpeg(bytes: &[u8]) -> bool {
-    // Checks for common JPEG markers
-    bytes.windows(2).any(|w| w == [0xFF, 0xD8]) || // SOI
-        bytes.windows(4).any(|w| w == [0xFF, 0xE0, 0x00, 0x10]) || // APP0
-        bytes.windows(4).any(|w| w == [0xFF, 0xE1, 0x00, 0x16]) // APP1
-}
-
-/// Checks if the bytes are likely from a PNG
-fn is_likely_png(bytes: &[u8]) -> bool {
-    // Checks if PNG signature is found somewhere
-    let png_signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-    bytes.windows(8).any(|w| w == png_signature)
+    let img = ImageReader::open(input_path)?.decode()?;
+    Ok(img)
 }
 
 // ===================================

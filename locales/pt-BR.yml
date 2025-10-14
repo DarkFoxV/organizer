@@ -24,10 +24,12 @@ register:
     tags: "Tags"
   tooltip:
     select_file: "Nenhuma imagem selecionada"
+    selected_folder: "Você selecionou uma pasta, nenhuma imagem será exibida"
   button:
     submit: "Adicionar Imagem"
     submitting: "Imagem em processamento"
-    select_file: "Selecionar Imagem"
+    select_image: "Selecionar Imagem"
+    select_folder: "Selecionar Pasta"
   placeholder:
     description: "Descrição"
 
@@ -108,6 +110,9 @@ message:
     success: "Imagem copiada para clipboard"
     error: "Erro ao copiar imagem para clipboard"
   register:
+    folder:
+      success: "Pasta registrada com sucesso!  %{count} imagens registradas"
+      error: "Erro ao registrar pasta:  %{err}"
     success: "Imagem registrada com sucesso"
     error: "Erro ao registrar imagem"
   update:

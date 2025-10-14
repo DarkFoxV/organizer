@@ -24,10 +24,13 @@ register:
     tags: "Etiquetas"
   tooltip:
     select_file: "Ninguna imagen seleccionada"
+    selected_folder: "Seleccionaste una carpeta, no se mostrará ninguna imagen"
   button:
     submit: "Agregar imagen"
-    submitting: "Imagen en procesamiento"
-    select_file: "Seleccionar imagen"
+    submitting: "Procesando imagen"
+    select_image: "Seleccionar imagen"
+    select_folder: "Seleccionar carpeta"
+
   placeholder:
     description: "Descripción"
 
@@ -106,6 +109,9 @@ message:
     success: "Imagen copiada al portapapeles"
     error: "Error al copiar la imagen al portapapeles"
   register:
+    folder:
+      success: "¡Carpeta registrada con éxito!  %{count} imágenes registradas"
+      error: "Error al registrar la carpeta:  %{err}"
     success: "Imagen registrada con éxito"
     error: "Error al registrar la imagen"
   update:

@@ -9,6 +9,8 @@ pub struct Model {
     pub thumbnail_path: String,
     pub description: String,
     pub created_at: DateTime,
+    pub is_folder: bool,
+    pub is_prepared: bool
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

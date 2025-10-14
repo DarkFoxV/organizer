@@ -6,7 +6,10 @@ use crate::models::page::Page;
 use crate::models::{image, image_tag, tag};
 use crate::services::connection_db::get_connection;
 use crate::services::tag_service::{get_tags_for_images, update_tags_for_image};
-use sea_orm::{prelude::*, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, InsertResult, JoinType, Order, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait};
+use sea_orm::{
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, InsertResult, JoinType, Order,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, prelude::*,
+};
 use std::collections::{HashMap, HashSet};
 
 pub async fn insert_image(desc: &str) -> Result<i64, DbErr> {
@@ -15,6 +18,7 @@ pub async fn insert_image(desc: &str) -> Result<i64, DbErr> {
         description: Set(desc.to_string()),
         path: Set(String::new()),
         thumbnail_path: Set(String::new()),
+        is_prepared: Set(false),
         ..Default::default()
     };
 
@@ -104,7 +108,6 @@ async fn find_all_images_without_filter(
     filter: Filter,
     db: &DatabaseConnection,
 ) -> Result<Page<ImageDTO>, DbErr> {
-
     // Count total
     let total_count = image::Entity::find().count(db).await?;
     let total_pages = if total_count == 0 {
@@ -113,9 +116,7 @@ async fn find_all_images_without_filter(
         (total_count + size - 1) / size
     };
 
-    let mut query = image::Entity::find()
-        .limit(size)
-        .offset(page * size);
+    let mut query = image::Entity::find().limit(size).offset(page * size);
 
     query = if filter.sort_order == SortOrder::CreatedDesc {
         query.order_by(image::Column::CreatedAt, Order::Desc)
@@ -123,9 +124,7 @@ async fn find_all_images_without_filter(
         query.order_by(image::Column::CreatedAt, Order::Asc)
     };
 
-    let images: Vec<Model> = query
-        .all(db)
-        .await?;
+    let images: Vec<Model> = query.all(db).await?;
 
     // Search for tags for each image
     let image_ids: Vec<i64> = images.iter().map(|img| img.id).collect();
@@ -148,6 +147,8 @@ pub async fn delete_image(id_val: i64) -> Result<(), DbErr> {
     Entity::delete_by_id(id_val).exec(&txn).await?;
 
     txn.commit().await?;
+
+    // Return Ok regardless if deletion happened or not
     Ok(())
 }
 
@@ -179,6 +180,10 @@ pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbEr
         }
     }
 
+    active_model.is_prepared = Set(dto.is_prepared);
+
+    active_model.is_folder = Set(dto.is_folder);
+
     let updated_model = active_model.update(&db).await?;
 
     if let Some(tags) = dto.tags {
@@ -196,8 +201,7 @@ pub async fn find_by_id(id_val: i64) -> Result<Option<ImageDTO>, DbErr> {
     // Consulta o Model da imagem diretamente, sem recursão
     if let Some(model) = Entity::find_by_id(id_val).one(&db).await? {
         // Busca as tags dessa imagem
-        let tags_map: HashMap<i64, HashSet<TagDTO>> =
-            get_tags_for_images(&[id_val], &db).await?;
+        let tags_map: HashMap<i64, HashSet<TagDTO>> = get_tags_for_images(&[id_val], &db).await?;
 
         // Constrói o DTO diretamente aqui
         let dto = ImageDTO {
@@ -206,7 +210,9 @@ pub async fn find_by_id(id_val: i64) -> Result<Option<ImageDTO>, DbErr> {
             thumbnail_path: model.thumbnail_path,
             description: model.description,
             tags: tags_map.get(&id_val).cloned().unwrap_or_default(),
-            created_at: model.created_at.format("%Y-%m-%d").to_string()
+            created_at: model.created_at.format("%Y-%m-%d").to_string(),
+            is_folder: model.is_folder,
+            is_prepared: model.is_prepared,
         };
 
         Ok(Some(dto))
@@ -224,41 +230,30 @@ fn build_desc_condition(query: &str) -> Option<Condition> {
     if q.contains('+') {
         let mut cond = Condition::any();
         for term in q.split('+').map(str::trim).filter(|t| !t.is_empty()) {
-            cond = cond.add(
-                image::Column::Description.contains(term)
-            );
+            cond = cond.add(image::Column::Description.contains(term));
         }
         Some(cond)
     } else {
-        Some(
-            Condition::all().add(
-                image::Column::Description.contains(q)
-            )
-        )
+        Some(Condition::all().add(image::Column::Description.contains(q)))
     }
 }
 
-pub fn to_dto(
-    images: Vec<Model>,
-    tags_map: HashMap<i64, HashSet<TagDTO>>,
-) -> Vec<ImageDTO> {
+pub fn to_dto(images: Vec<Model>, tags_map: HashMap<i64, HashSet<TagDTO>>) -> Vec<ImageDTO> {
     images
         .iter()
         .map(|img| to_image_dto(img, &tags_map))
         .collect()
 }
 
-pub fn to_image_dto(
-    model: &Model,
-    tags_map: &HashMap<i64, HashSet<TagDTO>>,
-) -> ImageDTO {
+pub fn to_image_dto(model: &Model, tags_map: &HashMap<i64, HashSet<TagDTO>>) -> ImageDTO {
     ImageDTO {
         id: model.id,
         path: model.path.clone(),
         thumbnail_path: model.thumbnail_path.clone(),
         description: model.description.clone(),
         tags: tags_map.get(&model.id).cloned().unwrap_or_default(),
-        created_at: model.created_at.format("%Y-%m-%d").to_string()
+        created_at: model.created_at.format("%Y-%m-%d").to_string(),
+        is_folder: model.is_folder,
+        is_prepared: model.is_prepared,
     }
 }
-

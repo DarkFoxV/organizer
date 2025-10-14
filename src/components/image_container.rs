@@ -13,6 +13,7 @@ pub struct ImageContainer {
     pub id: i64,
     pub image_dto: ImageDTO,
     pub handle: Handle,
+    pub is_from_folder: bool,
 
     pub tooltip_delete: String,
     pub tooltip_edit: String,
@@ -22,12 +23,13 @@ pub struct ImageContainer {
 }
 
 impl ImageContainer {
-    pub fn new(image_data: ImageDTO) -> Self {
+    pub fn new(image_data: ImageDTO, is_from_folder: bool) -> Self {
         let handle = Handle::from_path(image_data.thumbnail_path.clone());
         Self {
             id: image_data.id,
             image_dto: image_data,
             handle,
+            is_from_folder,
             tooltip_delete: t!("message.image.container.delete").to_string(),
             tooltip_edit: t!("message.image.container.edit").to_string(),
             tooltip_view: t!("message.image.container.open").to_string(),
@@ -37,16 +39,24 @@ impl ImageContainer {
     }
 
     pub fn view(&self) -> iced::Element<Message> {
-        let image_widget = Container::new(
-            Image::new(&self.handle)
+        let image_widget = if self.image_dto.is_prepared {
+            Container::new(
+                Image::new(&self.handle)
+                    .width(Length::Fill)
+                    .height(Length::Fixed(180.0)),
+            )
+                .padding(8)
                 .width(Length::Fill)
-                .height(Length::Fixed(180.0)),
-        )
-        .padding(8)
-        .width(Length::Fill)
-        .height(Length::Fixed(180.0));
+                .height(Length::Fixed(180.0))
+        } else {
+            Container::new(fa_icon_solid("hourglass-half").size(32.0))
+                .padding(8)
+                .width(Length::Fill)
+                .height(Length::Fixed(180.0))
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center)
+        };
 
-        // Descrição scrollável com estilo melhorado
         let description = Container::new(Scrollable::new(
             Container::new(
                 Text::new(&self.image_dto.description)
@@ -69,29 +79,49 @@ impl ImageContainer {
         .align_x(Horizontal::Center)
         .padding([4, 8]);
 
-        let action_buttons = Row::new()
-            .spacing(6)
-            .push(
-                Tooltip::new(
-                    Button::new(
-                        Container::new(fa_icon_solid("trash").size(16.0))
-                            .align_x(Horizontal::Center)
-                            .align_y(Vertical::Center)
-                            .width(Length::Fill)
-                            .height(Length::Fill),
-                    )
-                    .style(Modern::danger_button())
-                    .width(Length::FillPortion(1))
-                    .height(Length::Fixed(36.0))
-                    .on_press(Message::DeleteImage(self.image_dto.clone())),
-                    self.tooltip_delete.as_str(),
-                    Position::Top,
+        let delete_button: iced::Element<Message> = if !self.is_from_folder {
+            Tooltip::new(
+                Button::new(
+                    Container::new(fa_icon_solid("trash").size(16.0))
+                        .align_x(Horizontal::Center)
+                        .align_y(Vertical::Center)
+                        .width(Length::Fill)
+                        .height(Length::Fill),
                 )
-                .style(Modern::card_container())
-                .padding(8)
-                .gap(4),
+                .style(Modern::danger_button())
+                .width(Length::FillPortion(1))
+                .height(Length::Fixed(36.0))
+                .on_press(Message::DeleteImage(self.image_dto.clone())),
+                self.tooltip_delete.as_str(),
+                Position::Top,
             )
-            .push(
+            .style(Modern::card_container())
+            .padding(8)
+            .gap(4)
+            .into()
+        } else {
+            Tooltip::new(
+                Button::new(
+                    Container::new(fa_icon_solid("trash").size(16.0))
+                        .align_x(Horizontal::Center)
+                        .align_y(Vertical::Center)
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                )
+                .style(Modern::danger_button())
+                .width(Length::FillPortion(1))
+                .height(Length::Fixed(36.0))
+                .on_press(Message::DeleteImageFromFolder(self.image_dto.clone())),
+                self.tooltip_delete.as_str(),
+                Position::Top,
+            )
+            .style(Modern::card_container())
+            .padding(8)
+            .gap(4)
+            .into()
+        };
+        let copy_button = if !self.image_dto.is_folder {
+            Some(
                 Tooltip::new(
                     Button::new(
                         Container::new(fa_icon_solid("copy").size(16.0))
@@ -111,27 +141,31 @@ impl ImageContainer {
                 .padding(8)
                 .gap(4),
             )
-            .push(
-                Tooltip::new(
-                    Button::new(
-                        Container::new(fa_icon_solid("eye").size(16.0))
-                            .align_x(Horizontal::Center)
-                            .align_y(Vertical::Center)
-                            .width(Length::Fill)
-                            .height(Length::Fill),
-                    )
-                    .style(Modern::success_button())
-                    .width(Length::FillPortion(1))
-                    .height(Length::Fixed(36.0))
-                    .on_press(Message::OpenImage(self.id)),
-                    self.tooltip_view.as_str(),
-                    Position::Top,
-                )
-                .style(Modern::card_container())
-                .padding(8)
-                .gap(4),
+        } else {
+            None
+        };
+
+        let view_button = Tooltip::new(
+            Button::new(
+                Container::new(fa_icon_solid("eye").size(16.0))
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
             )
-            .push(
+            .style(Modern::success_button())
+            .width(Length::FillPortion(1))
+            .height(Length::Fixed(36.0))
+            .on_press(Message::OpenImage(self.image_dto.clone())),
+            self.tooltip_view.as_str(),
+            Position::Top,
+        )
+        .style(Modern::card_container())
+        .padding(8)
+        .gap(4);
+
+        let edit_button = if !self.is_from_folder {
+            Some(
                 Tooltip::new(
                     Button::new(
                         Container::new(fa_icon_solid("pen-to-square").size(16.0))
@@ -144,33 +178,49 @@ impl ImageContainer {
                     .width(Length::FillPortion(1))
                     .height(Length::Fixed(36.0))
                     .on_press(Message::Update(self.image_dto.clone())),
-                    self.tooltip_edit.as_str(),
+                    self.tooltip_edit.as_ref(),
                     Position::Top,
                 )
                 .style(Modern::card_container())
                 .padding(8)
                 .gap(4),
             )
-            .push(
-                Tooltip::new(
-                    Button::new(
-                        Container::new(fa_icon_solid("folder-open").size(16.0))
-                            .align_x(Horizontal::Center)
-                            .align_y(Vertical::Center)
-                            .width(Length::Fill)
-                            .height(Length::Fill),
-                    )
-                    .style(Modern::system_button())
-                    .width(Length::FillPortion(1))
-                    .height(Length::Fixed(36.0))
-                    .on_press(Message::OpenLocalImage(self.id)),
-                    self.tooltip_open_local.as_str(),
-                    Position::Top,
-                )
-                .style(Modern::card_container())
-                .padding(8)
-                .gap(4),
-            );
+        } else {
+            None
+        };
+
+        let open_local_button = Tooltip::new(
+            Button::new(
+                Container::new(fa_icon_solid("folder-open").size(16.0))
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .style(Modern::system_button())
+            .width(Length::FillPortion(1))
+            .height(Length::Fixed(36.0))
+            .on_press(Message::OpenLocalImage(self.id)),
+            self.tooltip_open_local.as_str(),
+            Position::Top,
+        )
+        .style(Modern::card_container())
+        .padding(8)
+        .gap(4);
+
+        // Construção final
+        let mut action_buttons = Row::new()
+            .spacing(6)
+            .push(delete_button)
+            .push(view_button)
+            .push(open_local_button);
+
+        if let Some(edit_btn) = edit_button {
+            action_buttons = action_buttons.push(edit_btn);
+        }
+        if let Some(copy_btn) = copy_button {
+            action_buttons = action_buttons.push(copy_btn);
+        }
 
         // Container dos botões
         let buttons_container = Container::new(action_buttons)
@@ -178,12 +228,20 @@ impl ImageContainer {
             .padding([8, 12]);
 
         // Layout principal do card
-        let card_content = Column::new()
-            .spacing(0)
-            .push(image_widget)
-            .push(description)
-            .push(created_at)
-            .push(buttons_container);
+        let card_content = if self.image_dto.is_prepared {
+            Column::new()
+                .spacing(0)
+                .push(image_widget)
+                .push(description)
+                .push(created_at)
+                .push(buttons_container)
+        } else {
+            Column::new()
+                .spacing(0)
+                .push(image_widget)
+                .push(description)
+                .push(created_at)
+        };
 
         // Card container com sombra e bordas arredondadas
         Container::new(card_content)

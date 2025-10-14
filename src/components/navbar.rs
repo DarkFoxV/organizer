@@ -66,7 +66,7 @@ impl Navbar {
             id: NavButton,
             selected: NavButton,
         ) -> iced::widget::Button<'static, Message> {
-            let base = button(text(label).width(Length::Fill).align_x(Horizontal::Center))
+            let base = button(text(label).style(Modern::primary_text()).width(Length::Fill).align_x(Horizontal::Center))
                 .width(Length::Fill)
                 .height(Length::Fixed(48.0))
                 .padding(Padding {
@@ -137,7 +137,7 @@ impl Navbar {
             .width(Length::Fixed(280.0))
             .height(Length::Fill)
             .padding(5)
-            .style(Modern::sidebar_container())
+            .style(Modern::card_container())
             .into()
     }
 }

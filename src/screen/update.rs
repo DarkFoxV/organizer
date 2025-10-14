@@ -23,7 +23,7 @@ pub enum Action {
 #[derive(Debug, Clone)]
 pub enum Message {
     TagSelectorMessage(TagSelectorMessage),
-    TagsLoaded(Vec<TagDTO>),
+    TagsLoaded(HashSet<TagDTO>),
     DescriptionChanged(String),
     Submit {
         description: String,
@@ -47,7 +47,7 @@ impl Update {
         let description = image_dto.description.clone();
         let original_description = image_dto.description.clone();
 
-        let tag_selector = TagSelector::new(Vec::new(), true, true);
+        let tag_selector = TagSelector::new(HashSet::new(), true, true);
         let update = Update {
             tag_selector,
             image_dto,
@@ -399,25 +399,28 @@ impl Update {
         .style(Modern::floating_container())
         .width(Length::Fill);
 
-        // Main content
-        let main_content = Column::new().spacing(20).push(header).push(
-            Scrollable::new(
-                Column::new()
-                    .padding(20)
-                    .spacing(20)
-                    .push(image_section)
-                    .push(description_section)
-                    .push(tags_section)
-                    .push(Space::with_height(20))
-                    .push(action_section),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill),
-        );
-
-        Container::new(main_content)
+        Container::new(
+            Column::new()
+                .spacing(20)
+                .push(header)
+                .push(
+                    Scrollable::new(
+                        Column::new()
+                            .padding(20)
+                            .spacing(20)
+                            .push(image_section)
+                            .push(description_section)
+                            .push(tags_section)
+                            .push(Space::with_height(20))
+                            .push(action_section),
+                    )
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                ),
+        )
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
+
     }
 }

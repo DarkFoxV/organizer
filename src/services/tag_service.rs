@@ -117,7 +117,7 @@ pub async fn update_tags_for_image(
     Ok(())
 }
 
-pub async fn find_all() -> Result<Vec<TagDTO>, DbErr> {
+pub async fn find_all() -> Result<HashSet<TagDTO>, DbErr> {
     let db = get_connection().await?;
     let tags = tag::Entity::find()
         .all(&db)
@@ -145,7 +145,7 @@ pub async fn delete(id: i64) -> Result<(), DbErr> {
     Ok(())
 }
 
-fn to_dto(tags: Vec<Model>) -> Vec<TagDTO> {
+fn to_dto(tags: Vec<Model>) -> HashSet<TagDTO> {
     tags.into_iter()
         .map(|tag| TagDTO {
             id: tag.id,

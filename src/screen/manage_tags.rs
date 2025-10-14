@@ -11,7 +11,7 @@ use iced::{Alignment, Background, Border, Color, Element, Length, Shadow, Task};
 use iced_font_awesome::fa_icon_solid;
 use iced_modern_theme::Modern;
 use log::{debug, error, info};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub enum Action {
     None,
@@ -25,18 +25,18 @@ pub enum Message {
     ColorChanged(i64, TagColor),
     SubmitTag(i64),
     DeleteTag(i64),
-    TagsLoaded(Vec<TagDTO>),
+    TagsLoaded(HashSet<TagDTO>),
 
     NewTagNameChanged(String),
     NewTagColorChanged(TagColor),
     CreateNewTag,
-    TagCreateResult(Result<Vec<TagDTO>, String>),
+    TagCreateResult(Result<HashSet<TagDTO>, String>),
     NoOps,
 }
 
 #[derive(Debug, Default)]
 pub struct ManageTags {
-    pub tags: Vec<TagDTO>,
+    pub tags: HashSet<TagDTO>,
     pub editing: HashMap<i64, TagUpdateDTO>,
     pub new_tag_name: String,
     pub new_tag_color: TagColor,
@@ -51,7 +51,7 @@ impl ManageTags {
     pub fn new() -> (Self, Task<Message>) {
         (
             Self {
-                tags: Vec::new(),
+                tags: HashSet::new(),
                 editing: HashMap::new(),
                 new_tag_name: String::new(),
                 new_tag_color: TagColor::Blue,
@@ -101,9 +101,21 @@ impl ManageTags {
             }
             Message::SubmitTag(id) => {
                 if let Some(edit) = self.editing.remove(&id) {
-                    if let Some(tag) = self.tags.iter_mut().find(|t| t.id == id) {
-                        tag.name = edit.name.clone();
-                        tag.color = edit.color.clone();
+
+                    let old_tag = self.tags.iter().find(|t| t.id == id).cloned();
+
+                    if let Some(old_tag) = old_tag {
+
+                        self.tags.remove(&old_tag);
+
+
+                        let updated_tag = TagDTO {
+                            id: old_tag.id,
+                            name: edit.name.clone(),
+                            color: edit.color.clone(),
+                        };
+
+                        self.tags.insert(updated_tag);
                     }
 
                     let task = Task::perform(
@@ -227,8 +239,12 @@ impl ManageTags {
                 .push(self.view_table_header())
                 .push(Space::new(0, 16));
 
+
+            let mut elements: Vec<_> = self.tags.iter().collect();
+            elements.sort_by(|a, b| a.name.cmp(&b.name));
+            
             // Add tags rows
-            for (i, tag) in self.tags.iter().enumerate() {
+            for (i, tag) in elements.iter().enumerate() {
                 table_column = table_column.push(self.view_tag(tag, i));
             }
 

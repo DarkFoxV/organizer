@@ -53,7 +53,7 @@ pub fn get_clipboard_image() -> Option<DynamicImage> {
                     if file_service::is_image_path(&clipboard_text) {
                         info!("String is a path to an image: {}", clipboard_text);
 
-                        match thumbnail_service::open_and_fix_image(&clipboard_text) {
+                        match thumbnail_service::open_image(&clipboard_text) {
                             Ok(loaded_image) => {
                                 info!("Image successfully loaded from path");
                                 dynamic_image = Some(loaded_image);
@@ -71,6 +71,5 @@ pub fn get_clipboard_image() -> Option<DynamicImage> {
             }
         }
     }
-
     dynamic_image
 }

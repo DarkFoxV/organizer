@@ -24,10 +24,13 @@ register:
     tags: "Tags"
   tooltip:
     select_file: "No image selected"
+    selected_folder: "You selected a folder, no image will be displayed"
   button:
     submit: "Add Image"
-    submitting: "Image in processing"
-    select_file: "Select Image"
+    submitting: "Processing image"
+    select_image: "Select Image"
+    select_folder: "Select Folder"
+
   placeholder:
     description: "Description"
 
@@ -106,6 +109,9 @@ message:
     success: "Image copied to clipboard"
     error: "Error copying image to clipboard"
   register:
+    folder:
+      success: "Folder successfully registered!  %{count} images registered"
+      error: "Error while registering folder:  %{err}"
     success: "Image registered successfully"
     error: "Error registering image"
   update:

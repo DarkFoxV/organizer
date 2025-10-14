@@ -1,10 +1,12 @@
+use std::collections::HashSet;
 use crate::utils::get_assets_path;
 use log::{debug, error, info};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::error;
 use std::fs;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use crate::dtos::tag_dto::TagDTO;
 
 /// Main structure holding runtime settings
 #[derive(Debug, Clone)]
@@ -74,6 +76,14 @@ impl Default for Config {
 // ===================================
 //         GLOBAL CONFIG SINGLETON
 // ===================================
+
+pub static SAVED_DESCRIPTION: Lazy<Mutex<String>> = Lazy::new(|| {
+    "".to_string().into()
+});
+
+pub static SAVED_TAGS: Lazy<Mutex<HashSet<TagDTO>>> = Lazy::new(|| {
+    HashSet::new().into()
+});
 
 static SETTINGS: Lazy<RwLock<Settings>> = Lazy::new(|| {
     let settings = Settings::load();
