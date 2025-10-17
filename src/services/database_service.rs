@@ -3,7 +3,7 @@ use migration::Migrator;
 use sea_orm_migration::MigratorTrait;
 use std::{error::Error, fs, path::Path, time::Instant};
 use std::path::PathBuf;
-use crate::services::connection_db::get_connection;
+use crate::services::connection_db::{db_ref};
 use crate::utils::get_exe_dir;
 
 pub async fn run_migrations_safe(db: &sea_orm::DatabaseConnection) -> Result<(), Box<dyn Error>> {
@@ -55,7 +55,7 @@ pub async fn prepare_database() -> Result<(), Box<dyn Error>> {
     let is_fresh = !Path::new(db_path).exists();
 
     // Cria uma única conexão e reutiliza
-    let db = get_connection().await?;
+    let db = db_ref();
 
     // Verifica se o banco responde
     db.ping().await.map_err(|e| {
@@ -65,14 +65,14 @@ pub async fn prepare_database() -> Result<(), Box<dyn Error>> {
 
     if is_fresh {
         info!("Banco novo detectado. Aplicando todas as migrações...");
-        Migrator::up(&db, None).await.map_err(|e| {
+        Migrator::up(db, None).await.map_err(|e| {
             error!("Erro ao aplicar migrações no banco novo: {}", e);
             e
         })?;
         info!("Banco preparado com sucesso.");
     } else {
         info!("Banco existente. Verificando migrações pendentes...");
-        run_migrations_safe(&db).await?;
+        run_migrations_safe(db).await?;
     }
 
     Ok(())

@@ -4,7 +4,7 @@ use crate::models::filter::{Filter, SortOrder};
 use crate::models::image::{ActiveModel, Entity, Model};
 use crate::models::page::Page;
 use crate::models::{image, image_tag, tag};
-use crate::services::connection_db::get_connection;
+use crate::services::connection_db::db_ref;
 use crate::services::tag_service::{get_tags_for_images, update_tags_for_image};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, InsertResult, JoinType, Order,
@@ -13,7 +13,7 @@ use sea_orm::{
 use std::collections::{HashMap, HashSet};
 
 pub async fn insert_image(desc: &str) -> Result<i64, DbErr> {
-    let db = get_connection().await?;
+    let db = db_ref();
     let new_image = ActiveModel {
         description: Set(desc.to_string()),
         path: Set(String::new()),
@@ -22,20 +22,19 @@ pub async fn insert_image(desc: &str) -> Result<i64, DbErr> {
         ..Default::default()
     };
 
-    let result: InsertResult<ActiveModel> = Entity::insert(new_image).exec(&db).await?;
+    let result: InsertResult<ActiveModel> = Entity::insert(new_image).exec(db).await?;
     Ok(result.last_insert_id)
 }
 
 pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<ImageDTO>, DbErr> {
-    let db = get_connection().await?;
-
+    let db = db_ref();
     // Verify if we have a query
     let has_query = !filter.query.trim().is_empty();
     let has_tags = !filter.tags.is_empty();
 
     // If we don't have a query or tags, just return all
     if !has_query && !has_tags {
-        return find_all_images_without_filter(page, size, filter, &db).await;
+        return find_all_images_without_filter(page, size, filter, db).await;
     }
 
     // Base query for images
@@ -64,7 +63,7 @@ pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<Image
         .select_only()
         .column(image::Column::Id)
         .distinct()
-        .count(&db)
+        .count(db)
         .await?;
 
     let total_pages = if total_count == 0 {
@@ -85,13 +84,13 @@ pub async fn find_all(filter: Filter, page: u64, size: u64) -> Result<Page<Image
         .limit(size)
         .offset(page * size)
         .into_model::<Model>()
-        .all(&db)
+        .all(db)
         .await?;
 
     // Search for tags for each image
     let image_ids: Vec<i64> = images.iter().map(|img| img.id).collect();
 
-    let tags_map = get_tags_for_images(&image_ids, &db).await?;
+    let tags_map = get_tags_for_images(&image_ids, db).await?;
 
     let dtos = to_dto(images, tags_map);
 
@@ -141,7 +140,7 @@ async fn find_all_images_without_filter(
 }
 
 pub async fn delete_image(id_val: i64) -> Result<(), DbErr> {
-    let db = get_connection().await?;
+    let db = db_ref();
     let txn = db.begin().await?;
 
     Entity::delete_by_id(id_val).exec(&txn).await?;
@@ -153,10 +152,9 @@ pub async fn delete_image(id_val: i64) -> Result<(), DbErr> {
 }
 
 pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbErr> {
-    let db = get_connection().await?;
-
+    let db = db_ref();
     let existing_model = Entity::find_by_id(id)
-        .one(&db)
+        .one(&*db)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Image not found".to_string()))?;
 
@@ -184,24 +182,24 @@ pub async fn update_from_dto(id: i64, dto: ImageUpdateDTO) -> Result<Model, DbEr
 
     active_model.is_folder = Set(dto.is_folder);
 
-    let updated_model = active_model.update(&db).await?;
+    let updated_model = active_model.update(db).await?;
 
     if let Some(tags) = dto.tags {
         if !tags.is_empty() {
-            update_tags_for_image(&db, id, tags).await?;
+            update_tags_for_image(db, id, tags).await?;
         }
     }
 
     Ok(updated_model)
 }
 
+#[allow(dead_code)]
 pub async fn find_by_id(id_val: i64) -> Result<Option<ImageDTO>, DbErr> {
-    let db = get_connection().await?;
-
+    let db = db_ref();
     // Consulta o Model da imagem diretamente, sem recursão
-    if let Some(model) = Entity::find_by_id(id_val).one(&db).await? {
+    if let Some(model) = Entity::find_by_id(id_val).one(db).await? {
         // Busca as tags dessa imagem
-        let tags_map: HashMap<i64, HashSet<TagDTO>> = get_tags_for_images(&[id_val], &db).await?;
+        let tags_map: HashMap<i64, HashSet<TagDTO>> = get_tags_for_images(&[id_val], db).await?;
 
         // Constrói o DTO diretamente aqui
         let dto = ImageDTO {

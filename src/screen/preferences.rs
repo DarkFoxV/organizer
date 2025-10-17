@@ -107,7 +107,7 @@ impl Preferences {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&'_ self) -> Element<'_, Message> {
         let language_options = self.available_languages.clone();
 
         // Language Section
@@ -149,13 +149,6 @@ impl Preferences {
             Message::ThumbCompressionChanged,
         );
 
-        // Image Compression Section
-        let image_compression_section = self.create_compression_section(
-            t!("preferences.label.image_compression").to_string(),
-            self.image_compression,
-            Message::ImageCompressionChanged,
-        );
-
         let scrollable = Scrollable::new(
             Column::new()
                 .padding(20)
@@ -177,7 +170,6 @@ impl Preferences {
                         .push(theme_section)
                         .push(items_section)
                         .push(thumb_compression_section)
-                        .push(image_compression_section),
                 ),
         );
 

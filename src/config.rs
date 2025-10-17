@@ -5,7 +5,8 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::error;
 use std::fs;
-use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::Mutex;
 use crate::dtos::tag_dto::TagDTO;
 
 /// Main structure holding runtime settings
@@ -73,21 +74,28 @@ impl Default for Config {
     }
 }
 
-// ===================================
-//         GLOBAL CONFIG SINGLETON
-// ===================================
+/// In-memory UI state (search filters, pagination, scroll, etc.)
+/// This is NOT persisted to disk - it's session-only
+#[derive(Debug, Clone, Default)]
+pub struct UIState {
+    pub search_query: String,
+    pub selected_tags: HashSet<TagDTO>,
+    pub current_page: u64,
+    pub scroll_offset: f32,
+}
 
-pub static SAVED_DESCRIPTION: Lazy<Mutex<String>> = Lazy::new(|| {
-    "".to_string().into()
-});
-
-pub static SAVED_TAGS: Lazy<Mutex<HashSet<TagDTO>>> = Lazy::new(|| {
-    HashSet::new().into()
-});
+// ===================================
+//         GLOBAL SINGLETONS
+// ===================================
 
 static SETTINGS: Lazy<RwLock<Settings>> = Lazy::new(|| {
     let settings = Settings::load();
     RwLock::new(settings)
+});
+
+
+static UI_STATE: Lazy<Mutex<UIState>> = Lazy::new(|| {
+    Mutex::new(UIState::default())
 });
 
 /// Gets a read-only lock on the global Settings
@@ -102,4 +110,60 @@ pub fn get_settings_mut() -> RwLockWriteGuard<'static, Settings> {
     SETTINGS
         .write()
         .expect("Failed to acquire write lock on SETTINGS")
+}
+
+// ===================================
+//  UI STATE FUNCTIONS (IN-MEMORY ONLY)
+// ===================================
+
+/// Updates the search query
+pub fn set_search_query(query: String) {
+    UI_STATE.lock().unwrap().search_query = query;
+}
+
+/// Gets the current search query
+pub fn get_search_query() -> String {
+    UI_STATE.lock().unwrap().search_query.clone()
+}
+
+/// Updates the selected tags
+pub fn set_selected_tags(tags: HashSet<TagDTO>) {
+    UI_STATE.lock().unwrap().selected_tags = tags;
+}
+
+/// Gets the current selected tags
+pub fn get_selected_tags() -> HashSet<TagDTO> {
+    UI_STATE.lock().unwrap().selected_tags.clone()
+}
+
+/// Updates the current page
+pub fn set_current_page(page: u64) {
+    UI_STATE.lock().unwrap().current_page = page;
+}
+
+/// Gets the current page
+pub fn get_current_page() -> u64 {
+    UI_STATE.lock().unwrap().current_page
+}
+
+/// Updates the scroll offset
+pub fn set_scroll_offset(offset: f32) {
+    UI_STATE.lock().unwrap().scroll_offset = offset;
+}
+
+/// Gets the current scroll offset
+pub fn get_scroll_offset() -> f32 {
+    UI_STATE.lock().unwrap().scroll_offset
+}
+
+/// Resets the UI state to default (useful for "clear filters" functionality)
+#[allow(dead_code)]
+pub fn reset_ui_state() {
+    *UI_STATE.lock().unwrap() = UIState::default();
+}
+
+/// Gets a complete clone of the UI state (useful for debugging)
+#[allow(dead_code)]
+pub fn get_ui_state() -> UIState {
+    UI_STATE.lock().unwrap().clone()
 }

@@ -60,7 +60,7 @@ impl Navbar {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&'_ self) -> Element<'_, Message> {
         fn styled_button(
             label: String,
             id: NavButton,

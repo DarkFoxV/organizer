@@ -28,6 +28,7 @@ use iced_modern_theme::Modern;
 use image::DynamicImage;
 use log::info;
 use std::time::{Duration, Instant};
+use crate::services::connection_db::init_db;
 
 i18n!("locales", fallback = "en");
 
@@ -351,7 +352,7 @@ impl Organizer {
         Subscription::batch(subscriptions)
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&'_ self) -> Element<'_, Message> {
         let navbar = self.navbar.view().map(Message::Navbar);
 
         let content = match &self.screen {
@@ -400,10 +401,12 @@ fn main() -> iced::Result {
     // Start database
     rt.block_on(async {
         dotenv::dotenv().ok();
+        init_db().await.expect("Failed to initialize database");
         database_service::prepare_database().await.unwrap();
     });
 
     rt.shutdown_background();
+
 
     // Start application
     iced::application(Organizer::title, Organizer::update, Organizer::view)

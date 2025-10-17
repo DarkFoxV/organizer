@@ -5,12 +5,12 @@ use crate::dtos::tag_dto::TagDTO;
 use crate::services::file_service::{
     is_image_path, save_image_file_with_thumbnail, save_images_from_folder_with_thumbnails,
 };
-use crate::services::thumbnail_service::{dynamic_image_to_rgba, open_image};
+use crate::services::image_processor::{dynamic_image_to_rgba, open_image};
 use crate::services::toast_service::{push_error, push_success};
 use crate::services::{image_service, tag_service};
 use iced::widget::image::Handle;
 use iced::widget::{
-    Button, Column, Container, Image, Row, Scrollable, Space, Text, button, text_input,
+    Button, Column, Container, Image, Row, Scrollable, Space, Text, text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding, Task};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
@@ -20,6 +20,7 @@ use log::{error, info};
 use rfd::AsyncFileDialog;
 use std::collections::HashSet;
 use std::path::Path;
+use crate::components::ui_helpers::header::header;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -118,7 +119,7 @@ impl Register {
                     self.path = Some(path);
                     self.dynamic_image = None;
                     self.image_handle = None;
-                    self.original_format = None; // Limpe o formato
+                    self.original_format = None;
                 }
 
                 Action::None
@@ -284,34 +285,9 @@ impl Register {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&'_ self) -> Element<'_, Message> {
         // Header
-        let header = Container::new(
-            Row::new()
-                .width(Length::Fill)
-                .align_y(Alignment::Center)
-                .push(Space::with_width(Length::Fill))
-                .push(
-                    button(
-                        Container::new(fa_icon_solid("xmark").size(20.0))
-                            .width(Length::Fill)
-                            .height(Length::Fill)
-                            .align_x(Alignment::Center)
-                            .align_y(Alignment::Center),
-                    )
-                    .width(Length::Fixed(40.0))
-                    .height(Length::Fixed(40.0))
-                    .on_press(Message::NavigateToSearch)
-                    .style(Modern::danger_button()),
-                ),
-        )
-        .padding(Padding {
-            top: 10.0,
-            right: 22.5,
-            bottom: 0.0,
-            left: 22.5,
-        })
-        .width(Length::Fill);
+        let header = header(|| Message::NavigateToSearch);
 
         // Upload image preview
         let preview: Element<Message> = if let Some(handle) = &self.image_handle {

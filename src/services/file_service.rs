@@ -1,7 +1,7 @@
 use crate::config::get_settings;
 use crate::dtos::image_dto::ImageDTO;
-use crate::services::thumbnail_service;
-use crate::services::thumbnail_service::{generate_thumbnail_from_image, save_image_as_png};
+use crate::services::image_processor;
+use crate::services::image_processor::{generate_thumbnail_from_image, save_image_as_png};
 use crate::utils::get_exe_dir;
 use image::DynamicImage;
 use log::{debug, info, warn};
@@ -88,7 +88,7 @@ pub fn save_images_from_folder_with_thumbnails(
     // Criar thumb_folder usando o primeiro arquivo
     let folder_thumb_path = image_dir.join("thumb_folder.png");
     if let Some(first_entry) = entries.first() {
-        let first_image = thumbnail_service::open_image(&first_entry.path())?;
+        let first_image = image_processor::open_image(&first_entry.path())?;
         generate_thumbnail_from_image(
             &first_image,
             &folder_thumb_path,
@@ -101,7 +101,7 @@ pub fn save_images_from_folder_with_thumbnails(
 
     for entry in entries {
         let path = entry.path();
-        let image = thumbnail_service::open_image(&path)?;
+        let image = image_processor::open_image(&path)?;
 
         // Usar o padrão image_{id}_{incremento}
         let png_filename = format!("image_{}_{}.png", id, index);

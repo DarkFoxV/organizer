@@ -2,7 +2,7 @@ use crate::dtos::tag_dto::{TagDTO, TagUpdateDTO};
 use crate::models::tag::{ActiveModel, Model};
 use crate::models::tag_color::TagColor;
 use crate::models::{image_tag, tag};
-use crate::services::connection_db::get_connection;
+use crate::services::connection_db::{db_ref};
 use crate::services::tag_service::image_tag::Entity;
 use crate::services::tag_service::tag::Entity as TagEntity;
 use sea_orm::{
@@ -50,10 +50,10 @@ pub async fn get_tags_for_images(
 }
 
 pub async fn update_from_dto(id: i64, dto: TagUpdateDTO) -> Result<Model, DbErr> {
-    let db = get_connection().await?;
+    let db = db_ref();
 
     let existing_model = TagEntity::find_by_id(id)
-        .one(&db)
+        .one(db)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Tag not found".to_string()))?;
 
@@ -66,7 +66,7 @@ pub async fn update_from_dto(id: i64, dto: TagUpdateDTO) -> Result<Model, DbErr>
 
     active_model.color = Set(dto.color);
 
-    let updated_model = active_model.update(&db).await?;
+    let updated_model = active_model.update(db).await?;
 
     Ok(updated_model)
 }
@@ -118,9 +118,9 @@ pub async fn update_tags_for_image(
 }
 
 pub async fn find_all() -> Result<HashSet<TagDTO>, DbErr> {
-    let db = get_connection().await?;
+    let db = db_ref();
     let tags = tag::Entity::find()
-        .all(&db)
+        .all(db)
         .await?;
 
     Ok(to_dto(tags))
@@ -129,19 +129,19 @@ pub async fn find_all() -> Result<HashSet<TagDTO>, DbErr> {
 pub async fn save(name: &String, color: TagColor) -> Result<(), DbErr> {
     // Convert tag name to lowercase to ensure consistency
     let name = name.to_lowercase();
-    let db = get_connection().await?;
+    let db = db_ref();
     let new_tag = ActiveModel {
         name: Set(name),
         color: Set(color),
         ..Default::default()
     };
-    new_tag.insert(&db).await?;
+    new_tag.insert(db).await?;
     Ok(())
 }
 
 pub async fn delete(id: i64) -> Result<(), DbErr> {
-    let db = get_connection().await?;
-    TagEntity::delete_by_id(id).exec(&db).await?;
+    let db = db_ref();
+    TagEntity::delete_by_id(id).exec(db).await?;
     Ok(())
 }
 

@@ -218,7 +218,7 @@ impl ManageTags {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&'_ self) -> Element<'_, Message> {
         let mut content_vec = Vec::new();
 
         let header = self.view_header();
@@ -269,7 +269,7 @@ impl ManageTags {
             .into()
     }
 
-    fn view_header(&self) -> Element<Message> {
+    fn view_header(&'_ self) -> Element<'_, Message> {
         let title = text(t!("manage_tags.title"))
             .size(32)
             .style(Modern::primary_text());
@@ -281,7 +281,7 @@ impl ManageTags {
         column![title, Space::new(0, 8), subtitle].spacing(0).into()
     }
 
-    fn view_add_tag_form(&self) -> Element<Message> {
+    fn view_add_tag_form(&'_ self) -> Element<'_, Message> {
         let form_title = text(t!("manage_tags.add_form.title"))
             .size(20)
             .style(Modern::primary_text());
@@ -330,7 +330,7 @@ impl ManageTags {
             .into()
     }
 
-    fn view_separator(&self) -> Element<Message> {
+    fn view_separator(&'_ self) -> Element<'_, Message> {
         container(
             container(text(""))
                 .width(Length::Fill)
@@ -346,7 +346,7 @@ impl ManageTags {
         .into()
     }
 
-    fn view_table_header(&self) -> Element<Message> {
+    fn view_table_header(&'_ self) -> Element<'_, Message> {
         let name_header = text(t!("manage_tags.table.name_header"))
             .size(14)
             .style(Modern::secondary_text());

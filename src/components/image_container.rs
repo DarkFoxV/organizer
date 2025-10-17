@@ -38,7 +38,7 @@ impl ImageContainer {
         }
     }
 
-    pub fn view(&self) -> iced::Element<Message> {
+    pub fn view(&'_ self) -> iced::Element<'_, Message> {
         let image_widget = if self.image_dto.is_prepared {
             Container::new(
                 Image::new(&self.handle)

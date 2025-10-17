@@ -1,4 +1,4 @@
-use crate::services::{file_service, thumbnail_service};
+use crate::services::{file_service, image_processor};
 use arboard::{Clipboard, ImageData};
 use image::DynamicImage;
 use log::info;
@@ -53,7 +53,7 @@ pub fn get_clipboard_image() -> Option<DynamicImage> {
                     if file_service::is_image_path(&clipboard_text) {
                         info!("String is a path to an image: {}", clipboard_text);
 
-                        match thumbnail_service::open_image(&clipboard_text) {
+                        match image_processor::open_image(&clipboard_text) {
                             Ok(loaded_image) => {
                                 info!("Image successfully loaded from path");
                                 dynamic_image = Some(loaded_image);

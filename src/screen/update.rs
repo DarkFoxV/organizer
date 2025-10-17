@@ -6,13 +6,14 @@ use crate::services::toast_service::{push_error, push_success};
 use crate::services::{image_service, tag_service};
 use iced::widget::image::Handle;
 use iced::widget::{
-    Button, Column, Container, Image, Row, Scrollable, Space, Text, button, text_input,
+    Button, Column, Container, Image, Row, Scrollable, Space, Text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Task};
 use iced_font_awesome::fa_icon_solid;
 use iced_modern_theme::Modern;
 use log::{error, info};
 use std::collections::HashSet;
+use crate::components::ui_helpers::header::header;
 
 pub enum Action {
     None,
@@ -108,6 +109,7 @@ impl Update {
                         if !tags.is_empty() {
                             update_dto.tags = Some(tags);
                         }
+                        update_dto.is_prepared = true;
 
                         image_service::update_from_dto(image_id, update_dto).await
                     },
@@ -133,36 +135,11 @@ impl Update {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&'_ self) -> Element<'_, Message> {
         let handle = Handle::from_path(&self.image_dto.thumbnail_path);
 
         // Header
-        let header = Container::new(
-            Row::new()
-                .width(Length::Fill)
-                .align_y(Alignment::Center)
-                .push(Space::with_width(Length::Fill))
-                .push(
-                    button(
-                        Container::new(fa_icon_solid("xmark").size(20.0))
-                            .width(Length::Fill)
-                            .height(Length::Fill)
-                            .align_x(Alignment::Center)
-                            .align_y(Alignment::Center),
-                    )
-                    .width(Length::Fixed(40.0))
-                    .height(Length::Fixed(40.0))
-                    .on_press(Message::NavigateToSearch)
-                    .style(Modern::danger_button()),
-                ),
-        )
-        .padding(Padding {
-            top: 10.0,
-            right: 22.5,
-            bottom: 0.0,
-            left: 22.5,
-        })
-        .width(Length::Fill);
+        let header = header(|| Message::NavigateToSearch);
 
         // Image section
         let image_section = Container::new(
@@ -400,27 +377,23 @@ impl Update {
         .width(Length::Fill);
 
         Container::new(
-            Column::new()
-                .spacing(20)
-                .push(header)
-                .push(
-                    Scrollable::new(
-                        Column::new()
-                            .padding(20)
-                            .spacing(20)
-                            .push(image_section)
-                            .push(description_section)
-                            .push(tags_section)
-                            .push(Space::with_height(20))
-                            .push(action_section),
-                    )
-                        .width(Length::Fill)
-                        .height(Length::Fill),
-                ),
+            Column::new().spacing(20).push(header).push(
+                Scrollable::new(
+                    Column::new()
+                        .padding(20)
+                        .spacing(20)
+                        .push(image_section)
+                        .push(description_section)
+                        .push(tags_section)
+                        .push(Space::with_height(20))
+                        .push(action_section),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill),
+            ),
         )
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
-
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
     }
 }

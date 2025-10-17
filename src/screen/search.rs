@@ -1,7 +1,10 @@
 use crate::components::image_container::ImageContainer;
 use crate::components::tag_selector;
 use crate::components::tag_selector::TagSelector;
-use crate::config::{SAVED_DESCRIPTION, SAVED_TAGS, get_settings};
+use crate::config::{
+    get_current_page, get_scroll_offset, get_search_query, get_selected_tags, get_settings,
+    set_current_page, set_scroll_offset, set_search_query, set_selected_tags,
+};
 use crate::dtos::image_dto::ImageDTO;
 use crate::dtos::tag_dto::TagDTO;
 use crate::models::filter::{Filter, SortOrder};
@@ -12,6 +15,7 @@ use iced::alignment::{Horizontal, Vertical};
 use iced::widget::image::{Handle, viewer};
 use iced::widget::{
     Button, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput, button,
+    scrollable,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Task, Theme};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
@@ -52,6 +56,7 @@ pub enum Message {
     ImagePasted(DynamicImage),
     PreviousImage,
     NextImage,
+    ScrollChanged(scrollable::Viewport),
     NoOps,
 }
 
@@ -68,20 +73,24 @@ pub struct Search {
     selected_sort_order: SortOrder,
     current_search_id: u64,
     folder_opened: bool,
+    scroll_id: scrollable::Id,
+    scroll_offset: f32,
 }
 
 impl Search {
     pub fn new() -> (Self, Task<Message>) {
         let settings = get_settings();
         let page_size = settings.config.items_per_page;
-        let query = SAVED_DESCRIPTION.lock().unwrap().clone();
-        let selected_tags = SAVED_TAGS.lock().unwrap().clone();
+        let query = get_search_query();
+        let page = get_current_page();
+        let selected_tags = get_selected_tags();
+        let scroll_offset = get_scroll_offset();
         let component = Self {
             query: query.clone(),
             images: vec![],
             tag_selector: TagSelector::new(selected_tags.clone(), false, true),
             page_size,
-            current_page: 0,
+            current_page: page,
             total_pages: 0,
             show_preview: false,
             preview_handle: Handle::from_path("".to_string()),
@@ -89,6 +98,8 @@ impl Search {
             selected_sort_order: SortOrder::CreatedDesc,
             current_search_id: 0,
             folder_opened: false,
+            scroll_id: scrollable::Id::unique(),
+            scroll_offset,
         };
 
         let task = Task::batch([
@@ -108,7 +119,7 @@ impl Search {
                     filter.query = query;
                     filter.tags = selected_tags.iter().map(|tag| tag.name.clone()).collect();
 
-                    match image_service::find_all(filter, 0, page_size).await {
+                    match image_service::find_all(filter, page, page_size).await {
                         Ok(page) => (page.content, page.page_number, page.total_pages),
                         Err(_) => (vec![], 0, 0),
                     }
@@ -122,12 +133,30 @@ impl Search {
         (component, task)
     }
 
+    // Helpers
+
+    fn change_preview(&mut self, delta: isize) {
+        if self.show_preview && !self.images.is_empty() {
+            let len = self.images.len() as isize;
+            // calcula o índice circular
+            self.current_preview_index =
+                ((self.current_preview_index as isize + delta + len) % len) as usize;
+
+            let current_image = &self.images[self.current_preview_index];
+            let path = if current_image.image_dto.is_folder {
+                &current_image.image_dto.thumbnail_path
+            } else {
+                &current_image.image_dto.path
+            };
+            self.preview_handle = Handle::from_path(path.clone());
+        }
+    }
+
     pub fn update(&mut self, message: Message) -> Action {
         match message {
             Message::QueryChanged(query) => {
                 self.query = query.clone();
-                let mut saved_query = SAVED_DESCRIPTION.lock().unwrap();
-                *saved_query = query.clone();
+                set_search_query(query.clone());
                 self.current_search_id += 1;
                 let search_id = self.current_search_id;
 
@@ -156,6 +185,12 @@ impl Search {
                 } else {
                     Action::None
                 }
+            }
+
+            Message::ScrollChanged(viewport) => {
+                self.scroll_offset = viewport.absolute_offset().y;
+                set_scroll_offset(self.scroll_offset);
+                Action::None
             }
 
             Message::Update(image_dto) => {
@@ -233,7 +268,6 @@ impl Search {
                 let task = Task::perform(
                     async move {
                         // Usar a nova função de deleção inteligente
-                        // from_folder = true (arquivo dentro de uma pasta)
                         if let Err(e) = file_service::delete_image_smart(&dto.path, true).await {
                             error!("Failed to delete image file from folder: {}", e);
                         }
@@ -258,10 +292,23 @@ impl Search {
                         .push(ImageContainer::new(img.clone(), is_from_folder));
                 }
 
+                set_current_page(current_page);
                 self.current_page = current_page;
                 self.total_pages = total_pages;
 
-                Action::None
+                let scroll_offset = self.scroll_offset;
+                let scroll_id = self.scroll_id.clone();
+                let task = Task::done(()).then(move |_| {
+                    scrollable::scroll_to(
+                        scroll_id.clone(),
+                        scrollable::AbsoluteOffset {
+                            x: 0.0,
+                            y: scroll_offset,
+                        },
+                    )
+                });
+
+                Action::Run(task)
             }
 
             Message::OpenImage(image_dto) => {
@@ -300,37 +347,12 @@ impl Search {
             }
 
             Message::PreviousImage => {
-                if self.show_preview && !self.images.is_empty() {
-                    if self.current_preview_index > 0 {
-                        self.current_preview_index -= 1;
-                    } else {
-                        self.current_preview_index = self.images.len() - 1;
-                    }
-                    let current_image = &self.images[self.current_preview_index];
-                    if current_image.image_dto.is_folder {
-                        self.preview_handle = Handle::from_path(current_image.image_dto.thumbnail_path.clone());
-                    } else{
-                        self.preview_handle = Handle::from_path(current_image.image_dto.path.clone());
-                    }
-
-                }
+                self.change_preview(-1);
                 Action::None
             }
 
             Message::NextImage => {
-                if self.show_preview && !self.images.is_empty() {
-                    if self.current_preview_index < self.images.len() - 1 {
-                        self.current_preview_index += 1;
-                    } else {
-                        self.current_preview_index = 0;
-                    }
-                    let current_image = &self.images[self.current_preview_index];
-                    if current_image.image_dto.is_folder {
-                        self.preview_handle = Handle::from_path(current_image.image_dto.thumbnail_path.clone());
-                    } else{
-                        self.preview_handle = Handle::from_path(current_image.image_dto.path.clone());
-                    }
-                }
+                self.change_preview(1);
                 Action::None
             }
 
@@ -354,20 +376,20 @@ impl Search {
             }
 
             Message::TagSelectorMessage(msg) => {
+                // Update the tag selector state with the incoming message
                 let _ = self.tag_selector.update(msg);
 
-                let mut saved_tags = SAVED_TAGS.lock().unwrap();
-                saved_tags.clear();
-                for tag in &self.tag_selector.selected {
-                    saved_tags.insert(tag.clone());
-                }
+                // Get the currently selected tags and save them globally
+                let selected_tags = self.tag_selector.selected.clone();
+                set_selected_tags(selected_tags.clone());
 
-                // Debug log to verify tags are being saved
+                // Debug log to verify tags are being saved globally
                 info!(
                     "Saved tags to global: {:?}",
-                    saved_tags.iter().map(|t| &t.name).collect::<Vec<_>>()
+                    selected_tags.iter().map(|t| &t.name).collect::<Vec<_>>()
                 );
 
+                // Trigger a search task asynchronously
                 let task = Task::perform(async move {}, |_| Message::SearchButtonPressed);
                 Action::Run(task)
             }
@@ -377,6 +399,8 @@ impl Search {
                 self.images.clear();
                 let query = self.query.clone();
                 let selected_tags = self.tag_selector.selected.clone();
+                self.scroll_offset = 0.0;
+                set_scroll_offset(0.0);
                 let task = Task::perform(
                     async move {
                         let mut filter = Filter::new();
@@ -452,7 +476,7 @@ impl Search {
         }
     }
 
-    pub fn view(&self) -> Element<Message> {
+    pub fn view(&'_ self) -> Element<'_, Message> {
         let close_folder: Element<Message> = if self.folder_opened {
             Container::new(
                 Row::new()
@@ -601,6 +625,8 @@ impl Search {
                                 .align_x(Horizontal::Center)
                                 .padding(20),
                         )
+                        .id(self.scroll_id.clone())
+                        .on_scroll(Message::ScrollChanged)
                         .width(Length::Fill)
                         .height(Length::Fill),
                     ),
@@ -756,55 +782,35 @@ impl Search {
                     .style(Modern::danger_button()),
                 );
 
-            let prev_button = if self.images.len() > 1 {
-                button(
-                    Container::new(fa_icon_solid("chevron-left").size(24.0))
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .align_x(Alignment::Center)
-                        .align_y(Alignment::Center),
-                )
-                .width(Length::Fixed(50.0))
-                .height(Length::Fixed(50.0))
-                .on_press(Message::PreviousImage)
-                .style(Modern::secondary_button())
-            } else {
-                button(
-                    Container::new(fa_icon_solid("chevron-left").size(24.0))
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .align_x(Alignment::Center)
-                        .align_y(Alignment::Center),
-                )
-                .width(Length::Fixed(50.0))
-                .height(Length::Fixed(50.0))
-                .style(Modern::secondary_button())
-            };
+            let mut prev_button = button(
+                Container::new(fa_icon_solid("chevron-left").size(24.0))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center),
+            )
+            .width(Length::Fixed(50.0))
+            .height(Length::Fixed(50.0))
+            .style(Modern::secondary_button());
 
-            let next_button = if self.images.len() > 1 {
-                button(
-                    Container::new(fa_icon_solid("chevron-right").size(24.0))
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .align_x(Alignment::Center)
-                        .align_y(Alignment::Center),
-                )
-                .width(Length::Fixed(50.0))
-                .height(Length::Fixed(50.0))
-                .on_press(Message::NextImage)
-                .style(Modern::secondary_button())
-            } else {
-                button(
-                    Container::new(fa_icon_solid("chevron-right").size(24.0))
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .align_x(Alignment::Center)
-                        .align_y(Alignment::Center),
-                )
-                .width(Length::Fixed(50.0))
-                .height(Length::Fixed(50.0))
-                .style(Modern::secondary_button())
-            };
+            if self.images.len() > 1 {
+                prev_button = prev_button.on_press(Message::PreviousImage);
+            }
+
+            let mut next_button = button(
+                Container::new(fa_icon_solid("chevron-right").size(24.0))
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .align_x(Alignment::Center)
+                    .align_y(Alignment::Center),
+            )
+            .width(Length::Fixed(50.0))
+            .height(Length::Fixed(50.0))
+            .style(Modern::secondary_button());
+
+            if self.images.len() > 1 {
+                next_button = next_button.on_press(Message::NextImage)
+            }
 
             let body_with_navigation = Row::new()
                 .width(Length::Fill)

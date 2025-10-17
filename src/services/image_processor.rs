@@ -1,5 +1,4 @@
-use image::imageops::FilterType;
-use image::{DynamicImage, GenericImageView, ImageReader, ColorType};
+use image::{DynamicImage, ImageReader, ColorType};
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
@@ -38,26 +37,6 @@ pub fn generate_thumbnail_from_image<P: AsRef<Path>>(
 // ===================================
 //         IMAGE PROCESSING
 // ===================================
-
-/// Resizes an image while preserving the aspect ratio
-fn resize_preserving_aspect_ratio(
-    img: &DynamicImage,
-    max_width: u32,
-    max_height: u32,
-) -> DynamicImage {
-    let (width, height) = img.dimensions();
-
-    // If the image is already within the limits, return a copy
-    if width <= max_width && height <= max_height {
-        return img.clone();
-    }
-
-    let (new_width, new_height) = calculate_dimensions(width, height, max_width, max_height);
-
-    let filter = FilterType::Gaussian;
-
-    img.resize_exact(new_width, new_height, filter)
-}
 
 fn resize_with_fast_lib(
     image: &DynamicImage,
