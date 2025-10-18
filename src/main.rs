@@ -28,7 +28,6 @@ use iced_modern_theme::Modern;
 use image::DynamicImage;
 use log::info;
 use std::time::{Duration, Instant};
-use crate::services::connection_db::init_db;
 
 i18n!("locales", fallback = "en");
 
@@ -401,7 +400,6 @@ fn main() -> iced::Result {
     // Start database
     rt.block_on(async {
         dotenv::dotenv().ok();
-        init_db().await.expect("Failed to initialize database");
         database_service::prepare_database().await.unwrap();
     });
 

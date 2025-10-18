@@ -1,5 +1,5 @@
 use crate::components::image_container::ImageContainer;
-use crate::components::tag_selector;
+use crate::components::{empty_state, header, image_preview_modal, pagination, search_bar, tag_selector};
 use crate::components::tag_selector::TagSelector;
 use crate::config::{
     get_current_page, get_scroll_offset, get_search_query, get_selected_tags, get_settings,
@@ -11,14 +11,13 @@ use crate::models::filter::{Filter, SortOrder};
 use crate::services::clipboard_service::copy_image_to_clipboard;
 use crate::services::toast_service::{push_error, push_success};
 use crate::services::{file_service, image_service, tag_service};
-use iced::alignment::{Horizontal, Vertical};
-use iced::widget::image::{Handle, viewer};
+use iced::alignment::{Horizontal};
+use iced::widget::image::{Handle};
 use iced::widget::{
-    Button, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput, button,
+    Column, Container, Row, Scrollable, Space, Text, TextInput, button,
     scrollable,
 };
-use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Task, Theme};
-use iced_font_awesome::{fa_icon, fa_icon_solid};
+use iced::{Element, Length, Task};
 use iced_modern_theme::Modern;
 use image::DynamicImage;
 use log::{error, info};
@@ -61,8 +60,8 @@ pub enum Message {
 }
 
 pub struct Search {
-    pub query: String,
-    pub images: Vec<ImageContainer>,
+    query: String,
+    images: Vec<ImageContainer>,
     tag_selector: TagSelector,
     page_size: u64,
     current_page: u64,
@@ -87,7 +86,7 @@ impl Search {
         let scroll_offset = get_scroll_offset();
         let component = Self {
             query: query.clone(),
-            images: vec![],
+            images: Vec::with_capacity(page_size as usize),
             tag_selector: TagSelector::new(selected_tags.clone(), false, true),
             page_size,
             current_page: page,
@@ -150,6 +149,23 @@ impl Search {
             };
             self.preview_handle = Handle::from_path(path.clone());
         }
+    }
+
+    fn change_scroll(&mut self) -> Task<Message> {
+
+        let scroll_offset = self.scroll_offset;
+        let scroll_id = self.scroll_id.clone();
+        let task = Task::done(()).then(move |_| {
+            scrollable::scroll_to(
+                scroll_id.clone(),
+                scrollable::AbsoluteOffset {
+                    x: 0.0,
+                    y: scroll_offset,
+                },
+            )
+        });
+
+        task
     }
 
     pub fn update(&mut self, message: Message) -> Action {
@@ -281,6 +297,8 @@ impl Search {
             }
 
             Message::PushContainer(images, current_page, total_pages, is_from_folder) => {
+                self.images.reserve(images.len());
+
                 info!("Pushing {} images", images.len());
                 for img in images {
                     info!("Pushing image {}", img.id);
@@ -296,19 +314,7 @@ impl Search {
                 self.current_page = current_page;
                 self.total_pages = total_pages;
 
-                let scroll_offset = self.scroll_offset;
-                let scroll_id = self.scroll_id.clone();
-                let task = Task::done(()).then(move |_| {
-                    scrollable::scroll_to(
-                        scroll_id.clone(),
-                        scrollable::AbsoluteOffset {
-                            x: 0.0,
-                            y: scroll_offset,
-                        },
-                    )
-                });
-
-                Action::Run(task)
+                Action::Run(self.change_scroll())
             }
 
             Message::OpenImage(image_dto) => {
@@ -360,7 +366,8 @@ impl Search {
                 self.show_preview = false;
                 self.preview_handle = Handle::from_path("".to_string());
                 self.current_preview_index = 0;
-                Action::None
+
+                Action::Run(self.change_scroll())
             }
 
             Message::CloseFolder => {
@@ -477,110 +484,34 @@ impl Search {
     }
 
     pub fn view(&'_ self) -> Element<'_, Message> {
+        // Close folder header
         let close_folder: Element<Message> = if self.folder_opened {
-            Container::new(
-                Row::new()
-                    .width(Length::Fill)
-                    .align_y(Alignment::Center)
-                    .push(Space::with_width(Length::Fill))
-                    .push(
-                        button(
-                            Container::new(fa_icon_solid("xmark").size(20.0))
-                                .width(Length::Fill)
-                                .height(Length::Fill)
-                                .align_x(Alignment::Center)
-                                .align_y(Alignment::Center),
-                        )
-                        .width(Length::Fixed(40.0))
-                        .height(Length::Fixed(40.0))
-                        .on_press(Message::CloseFolder)
-                        .style(Modern::danger_button()),
-                    ),
-            )
-            .padding(Padding {
-                top: 10.0,
-                right: 22.5,
-                bottom: 0.0,
-                left: 22.5,
-            })
-            .width(Length::Fill)
-            .into()
+            header::header(|| Message::CloseFolder)
         } else {
             Container::new(Space::new(Length::Shrink, Length::Shrink))
                 .width(Length::Fill)
                 .into()
         };
 
-        let tags_view = Container::new(self.tag_selector.view().map(Message::TagSelectorMessage))
+        // Tags view
+        let tags_view = Container::new(
+            self.tag_selector
+                .view()
+                .map(Message::TagSelectorMessage),
+        )
             .width(Length::Fill)
             .padding(10)
             .style(Modern::card_container());
 
-        let search_bar = Container::new(
-            Row::new()
-                .spacing(15)
-                .push(
-                    Container::new(
-                        TextInput::new(t!("search.input.description").as_ref(), &self.query)
-                            .on_input(Message::QueryChanged)
-                            .on_submit(Message::SearchButtonPressed)
-                            .style(Modern::search_input())
-                            .padding([12, 16])
-                            .size(16),
-                    )
-                    .width(Length::FillPortion(5)),
-                )
-                .push(
-                    Button::new(
-                        Container::new(
-                            Row::new()
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                                .push(fa_icon_solid("magnifying-glass").size(18.0))
-                                .push(Text::new(t!("search.button.search")).size(16)),
-                        )
-                        .align_x(Horizontal::Center)
-                        .align_y(Vertical::Center),
-                    )
-                    .style(Modern::primary_button())
-                    .on_press(Message::SearchButtonPressed)
-                    .width(Length::FillPortion(2))
-                    .padding([12, 20]),
-                )
-                .push(
-                    Button::new(
-                        Container::new(
-                            Row::new()
-                                .spacing(8)
-                                .align_y(Alignment::Center)
-                                .push(fa_icon_solid("plus").size(18.0))
-                                .push(Text::new(t!("search.button.register")).size(16)),
-                        )
-                        .align_x(Horizontal::Center)
-                        .align_y(Vertical::Center),
-                    )
-                    .style(Modern::success_button())
-                    .on_press(Message::NavigateToRegister)
-                    .width(Length::FillPortion(2))
-                    .padding([12, 20]),
-                )
-                .push(
-                    Container::new(
-                        PickList::new(
-                            [SortOrder::CreatedAsc, SortOrder::CreatedDesc],
-                            Some(self.selected_sort_order.clone()),
-                            |selected| Message::SortOrderChanged(selected),
-                        )
-                        .style(Modern::pick_list())
-                        .padding([12, 16])
-                        .text_size(16),
-                    )
-                    .width(Length::FillPortion(1)),
-                ),
-        )
-        .width(Length::Fill)
-        .padding(20)
-        .style(Modern::card_container());
+        let search_bar = search_bar::search_bar(search_bar::SearchBarConfig {
+            query: &self.query,
+            sort_order: self.selected_sort_order.clone(),
+            sort_options: &[SortOrder::CreatedAsc, SortOrder::CreatedDesc],
+            on_query_change: Box::new(Message::QueryChanged),
+            on_search: Message::SearchButtonPressed,
+            on_register: Message::NavigateToRegister,
+            on_sort_change: Box::new(Message::SortOrderChanged),
+        });
 
         // Header
         let header = Column::new().spacing(20).push(search_bar).push(tags_view);
@@ -592,26 +523,11 @@ impl Search {
         }
 
         let images_grid = if self.images.is_empty() {
-            let column = Column::new()
-                .spacing(20)
-                .align_x(Alignment::Center)
-                .push(Container::new(fa_icon("image").size(64.0)))
-                .push(
-                    Text::new("No images found")
-                        .size(18)
-                        .style(Modern::secondary_text()),
-                )
-                .push(
-                    Text::new("Try adjusting your search criteria")
-                        .size(14)
-                        .style(Modern::secondary_text()),
-                );
-
-            Container::new(column)
-                .width(Length::Fill)
-                .height(Length::Fixed(300.0))
-                .align_x(Alignment::Center)
-                .align_y(Alignment::Center)
+            empty_state::empty_state(
+                "image",
+                "No images found",
+                "Try adjusting your search criteria",
+            )
         } else {
             Container::new(
                 Column::new()
@@ -625,14 +541,15 @@ impl Search {
                                 .align_x(Horizontal::Center)
                                 .padding(20),
                         )
-                        .id(self.scroll_id.clone())
-                        .on_scroll(Message::ScrollChanged)
-                        .width(Length::Fill)
-                        .height(Length::Fill),
+                            .id(self.scroll_id.clone())
+                            .on_scroll(Message::ScrollChanged)
+                            .width(Length::Fill)
+                            .height(Length::Fill),
                     ),
             )
-            .width(Length::Fill)
-            .height(Length::Fill)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
         };
 
         let images_container = Container::new(images_grid)
@@ -641,243 +558,42 @@ impl Search {
             .height(Length::Fill)
             .padding(20);
 
-        // Pagination
-        let pagination = if self.total_pages > 1 {
-            let mut pagination_row = Row::new().spacing(8).align_y(Alignment::Center);
-
-            if self.current_page > 0 {
-                pagination_row = pagination_row.push(
-                    Button::new(
-                        Container::new(
-                            Row::new()
-                                .spacing(6)
-                                .align_y(Alignment::Center)
-                                .push(fa_icon_solid("chevron-left").size(14.0))
-                                .push(Text::new(t!("search.button.previous")).size(14)),
-                        )
-                        .align_x(Horizontal::Center)
-                        .align_y(Vertical::Center),
-                    )
-                    .style(Modern::secondary_button())
-                    .on_press(Message::GoToPage(self.current_page - 1))
-                    .padding([8, 12]),
-                );
-            }
-
-            let start_page = if self.current_page > 2 {
-                self.current_page - 2
-            } else {
-                0
-            };
-            let end_page = std::cmp::min(start_page + 5, self.total_pages);
-
-            if start_page > 0 {
-                pagination_row = pagination_row.push(
-                    Button::new(Text::new("1").size(14))
-                        .style(Modern::blue_tinted_button())
-                        .on_press(Message::GoToPage(0))
-                        .padding([8, 12]),
-                );
-                if start_page > 1 {
-                    pagination_row = pagination_row
-                        .push(Text::new("...").size(14).style(Modern::secondary_text()));
-                }
-            }
-
-            for page_index in start_page..end_page {
-                let label = (page_index + 1).to_string();
-                let is_current = page_index == self.current_page;
-
-                let button = if is_current {
-                    Button::new(Text::new(label).size(14))
-                        .style(Modern::primary_button())
-                        .padding([8, 12])
-                } else {
-                    Button::new(Text::new(label).size(14))
-                        .style(Modern::blue_tinted_button())
-                        .on_press(Message::GoToPage(page_index))
-                        .padding([8, 12])
-                };
-
-                pagination_row = pagination_row.push(button);
-            }
-
-            if end_page < self.total_pages {
-                if end_page < self.total_pages - 1 {
-                    pagination_row = pagination_row
-                        .push(Text::new("...").size(14).style(Modern::secondary_text()));
-                }
-                pagination_row = pagination_row.push(
-                    Button::new(Text::new(self.total_pages.to_string()).size(14))
-                        .style(Modern::blue_tinted_button())
-                        .on_press(Message::GoToPage(self.total_pages - 1))
-                        .padding([8, 12]),
-                );
-            }
-
-            if self.current_page < self.total_pages - 1 {
-                pagination_row = pagination_row.push(
-                    Button::new(
-                        Container::new(
-                            Row::new()
-                                .spacing(6)
-                                .align_y(Alignment::Center)
-                                .push(Text::new(t!("search.button.next")).size(14))
-                                .push(fa_icon_solid("chevron-right").size(14.0)),
-                        )
-                        .align_x(Horizontal::Center)
-                        .align_y(Vertical::Center),
-                    )
-                    .style(Modern::secondary_button())
-                    .on_press(Message::GoToPage(self.current_page + 1))
-                    .padding([8, 12]),
-                );
-            }
-
-            Container::new(pagination_row)
-                .width(Length::Shrink)
-                .align_x(Horizontal::Center)
-                .padding(20)
-        } else {
-            Container::new(Text::new(""))
-                .width(Length::Fixed(0.0))
-                .height(Length::Fixed(0.0))
-        };
+        let pagination_view = pagination::pagination(
+            self.current_page,
+            self.total_pages,
+            Message::GoToPage,
+        );
 
         let content = Column::new()
             .spacing(30)
             .push(header)
             .push(images_container)
-            .push(pagination);
+            .push(pagination_view);
 
         let layout = Container::new(content)
             .width(Length::Fill)
             .height(Length::Fill)
             .padding(20);
 
-        let image_preview = if self.show_preview {
-            let image_counter =
-                format!("{} / {}", self.current_preview_index + 1, self.images.len());
-
-            let header: Row<_> = Row::new()
-                .width(Length::Fill)
-                .align_y(Vertical::Center)
-                .push(
-                    Text::new(image_counter)
-                        .size(16)
-                        .style(Modern::secondary_text()),
-                )
-                .push(Space::with_width(Length::Fill))
-                .push(
-                    button(
-                        Container::new(fa_icon_solid("xmark").size(24.0))
-                            .width(Length::Fill)
-                            .height(Length::Fill)
-                            .align_x(Alignment::Center)
-                            .align_y(Alignment::Center),
-                    )
-                    .width(Length::Fixed(40.0))
-                    .height(Length::Fixed(40.0))
-                    .on_press(Message::ClosePreview)
-                    .style(Modern::danger_button()),
-                );
-
-            let mut prev_button = button(
-                Container::new(fa_icon_solid("chevron-left").size(24.0))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .align_x(Alignment::Center)
-                    .align_y(Alignment::Center),
-            )
-            .width(Length::Fixed(50.0))
-            .height(Length::Fixed(50.0))
-            .style(Modern::secondary_button());
-
-            if self.images.len() > 1 {
-                prev_button = prev_button.on_press(Message::PreviousImage);
-            }
-
-            let mut next_button = button(
-                Container::new(fa_icon_solid("chevron-right").size(24.0))
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .align_x(Alignment::Center)
-                    .align_y(Alignment::Center),
-            )
-            .width(Length::Fixed(50.0))
-            .height(Length::Fixed(50.0))
-            .style(Modern::secondary_button());
-
-            if self.images.len() > 1 {
-                next_button = next_button.on_press(Message::NextImage)
-            }
-
-            let body_with_navigation = Row::new()
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_y(Alignment::Center)
-                .push(
-                    Container::new(prev_button)
-                        .width(Length::Fixed(70.0))
-                        .height(Length::Fill)
-                        .align_y(Alignment::Center)
-                        .padding([0, 10]),
-                )
-                .push(
-                    Container::new(
-                        viewer(self.preview_handle.clone())
-                            .width(Length::Fill)
-                            .height(Length::Fill),
-                    )
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .align_x(Horizontal::Center)
-                    .align_y(Vertical::Center),
-                )
-                .push(
-                    Container::new(next_button)
-                        .width(Length::Fixed(70.0))
-                        .height(Length::Fill)
-                        .align_y(Alignment::Center)
-                        .padding([0, 10]),
-                );
-
-            let modal_content: Column<_> = Column::new()
-                .spacing(15)
-                .align_x(Horizontal::Center)
-                .push(header)
-                .push(body_with_navigation);
-
-            let modal = Container::new(modal_content)
-                .padding(30)
-                .width(Length::FillPortion(9))
-                .height(Length::FillPortion(9))
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center)
-                .style(|theme: &Theme| iced::widget::container::Style {
-                    background: Some(Background::Color(theme.palette().background)),
-                    border: Border {
-                        color: Default::default(),
-                        width: 0.0,
-                        radius: 10.0.into(),
-                    },
-                    shadow: iced::Shadow {
-                        color: Color::from_rgba(0.0, 0.0, 0.0, 0.3),
-                        offset: iced::Vector::new(0.0, 8.0),
-                        blur_radius: 16.0,
-                    },
-                    ..Default::default()
-                });
-
-            modal
-        } else {
-            Container::new(Text::new(""))
-                .width(Length::Fixed(0.0))
-                .height(Length::Fixed(0.0))
-        };
-
+        // Image preview
         if self.show_preview {
-            image_preview.into()
+            let preview_config = image_preview_modal::PreviewConfig {
+                handle: self.preview_handle.clone(),
+                current_index: self.current_preview_index,
+                total_images: self.images.len(),
+                on_close: Message::ClosePreview,
+                on_previous: if self.images.len() > 1 {
+                    Some(Message::PreviousImage)
+                } else {
+                    None
+                },
+                on_next: if self.images.len() > 1 {
+                    Some(Message::NextImage)
+                } else {
+                    None
+                },
+            };
+            image_preview_modal::image_preview_modal(preview_config)
         } else {
             layout.into()
         }

@@ -23,11 +23,8 @@ pub async fn init_db() -> Result<(), DbErr> {
     Ok(())
 }
 
-pub fn global_connection() -> Arc<DatabaseConnection> {
-    DB.get().expect("DB not initialized").clone()
-}
-
 pub fn db_ref() -> &'static DatabaseConnection {
-    let arc = DB.get().expect("DB not initialized");
-    unsafe { &*Arc::as_ptr(arc) }
+    DB.get()
+        .expect("DB not initialized. Call init_db() first")
+        .as_ref()
 }

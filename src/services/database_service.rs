@@ -3,7 +3,7 @@ use migration::Migrator;
 use sea_orm_migration::MigratorTrait;
 use std::{error::Error, fs, path::Path, time::Instant};
 use std::path::PathBuf;
-use crate::services::connection_db::{db_ref};
+use crate::services::connection_db::{db_ref, init_db};
 use crate::utils::get_exe_dir;
 
 pub async fn run_migrations_safe(db: &sea_orm::DatabaseConnection) -> Result<(), Box<dyn Error>> {
@@ -53,6 +53,10 @@ pub async fn run_migrations_safe(db: &sea_orm::DatabaseConnection) -> Result<(),
 pub async fn prepare_database() -> Result<(), Box<dyn Error>> {
     let db_path = "organizer.db";
     let is_fresh = !Path::new(db_path).exists();
+
+    //init db service
+    init_db().await.expect("Failed to initialize database");
+
 
     // Cria uma única conexão e reutiliza
     let db = db_ref();

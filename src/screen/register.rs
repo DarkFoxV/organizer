@@ -20,7 +20,7 @@ use log::{error, info};
 use rfd::AsyncFileDialog;
 use std::collections::HashSet;
 use std::path::Path;
-use crate::components::ui_helpers::header::header;
+use crate::components::header::header;
 
 #[derive(Debug, Clone)]
 pub enum Message {

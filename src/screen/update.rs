@@ -13,7 +13,7 @@ use iced_font_awesome::fa_icon_solid;
 use iced_modern_theme::Modern;
 use log::{error, info};
 use std::collections::HashSet;
-use crate::components::ui_helpers::header::header;
+use crate::components::header::header;
 
 pub enum Action {
     None,
