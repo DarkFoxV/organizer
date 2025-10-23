@@ -1,4 +1,4 @@
-use image::{DynamicImage, ImageReader, ColorType};
+use image::{DynamicImage, ColorType};
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
@@ -50,11 +50,9 @@ fn resize_with_fast_lib(
         max_height,
     );
 
-    // Converter para RGBA primeiro
     let mut rgba_image = image.to_rgba8();
     let (orig_width, orig_height) = rgba_image.dimensions();
 
-    // Criar imagem de origem a partir do RGBA
     let src_image = Image::from_slice_u8(
         orig_width,
         orig_height,
@@ -62,18 +60,15 @@ fn resize_with_fast_lib(
         fr::PixelType::U8x4,
     )?;
 
-    // Criar imagem de destino
     let mut dst_image = Image::new(
         new_width,
         new_height,
         fr::PixelType::U8x4,
     );
 
-    // Fazer resize
     let mut resizer = fr::Resizer::new();
     resizer.resize(&src_image, &mut dst_image, None)?;
 
-    // Converter de volta para DynamicImage
     let buffer = dst_image.into_vec();
     let rgba_result = image::RgbaImage::from_raw(new_width, new_height, buffer)
         .ok_or("Failed to create RgbaImage")?;
@@ -138,18 +133,6 @@ pub fn save_image_as_png<P: AsRef<Path>>(
     writer.write_image_data(img.as_bytes())?;
 
     Ok(())
-}
-
-// ===================================
-//         IMAGE LOADING
-// ===================================
-
-/// Opens an image file
-pub fn open_image<P: AsRef<Path>>(
-    input_path: P,
-) -> Result<DynamicImage, Box<dyn std::error::Error>> {
-    let img = ImageReader::open(input_path)?.decode()?;
-    Ok(img)
 }
 
 // ===================================

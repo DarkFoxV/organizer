@@ -1,4 +1,4 @@
-use crate::components::tag_selector;
+use crate::components::{scrollable_form, tag_selector, ScrollableFormConfig};
 use crate::components::tag_selector::{Message as TagSelectorMessage, TagSelector};
 use crate::dtos::image_dto::{ImageDTO, ImageUpdateDTO};
 use crate::dtos::tag_dto::TagDTO;
@@ -6,7 +6,7 @@ use crate::services::toast_service::{push_error, push_success};
 use crate::services::{image_service, tag_service};
 use iced::widget::image::Handle;
 use iced::widget::{
-    Button, Column, Container, Image, Row, Scrollable, Space, Text, text_input,
+    Button, Column, Container, Image, Row, Text, text_input,
 };
 use iced::{Alignment, Background, Border, Color, Element, Length, Padding, Shadow, Task};
 use iced_font_awesome::fa_icon_solid;
@@ -376,24 +376,17 @@ impl Update {
         .style(Modern::floating_container())
         .width(Length::Fill);
 
-        Container::new(
-            Column::new().spacing(20).push(header).push(
-                Scrollable::new(
-                    Column::new()
-                        .padding(20)
-                        .spacing(20)
-                        .push(image_section)
-                        .push(description_section)
-                        .push(tags_section)
-                        .push(Space::with_height(20))
-                        .push(action_section),
-                )
-                .width(Length::Fill)
-                .height(Length::Fill),
-            ),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        let main_content = scrollable_form(ScrollableFormConfig {
+            header,
+            content_section: image_section.into(),
+            description_section: description_section.into(),
+            tags_section: tags_section.into(),
+            bottom_section: action_section.into(),
+        });
+
+        Container::new(main_content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 }

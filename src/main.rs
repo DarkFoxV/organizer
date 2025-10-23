@@ -20,12 +20,13 @@ use crate::screen::{ManageTags, Preferences, manage_tags, preferences, search};
 use crate::screen::{Register, Screen, Search};
 use crate::screen::{register, update};
 use crate::services::{clipboard_service, database_service, logger_service, toast_service};
-use iced::event;
+use iced::futures::SinkExt;
 use iced::keyboard;
 use iced::widget::{Column, Row, container, stack};
 use iced::{Alignment, Element, Event, Length, Subscription, Task, Theme, time};
+use iced::{event, window};
 use iced_modern_theme::Modern;
-use image::DynamicImage;
+use image::{DynamicImage, ImageFormat};
 use log::info;
 use std::time::{Duration, Instant};
 
@@ -52,7 +53,7 @@ pub enum Message {
 #[derive(Debug, Clone)]
 pub enum NavigationTarget {
     Search,
-    Register(Option<DynamicImage>),
+    Register(Option<DynamicImage>, Option<ImageFormat>),
     Update(ImageDTO),
     Preferences,
     ManageTags,
@@ -113,8 +114,8 @@ impl Organizer {
                 self.navbar.selected = NavButton::Search;
                 task.map(Message::Search)
             }
-            NavigationTarget::Register(image) => {
-                let (register, task) = Register::new(image);
+            NavigationTarget::Register(image, format) => {
+                let (register, task) = Register::new(image, format);
                 self.screen = Screen::Register(register);
                 task.map(Message::Register)
             }
@@ -152,23 +153,25 @@ impl Organizer {
 
     // Method to handle paste shortcut
     fn handle_paste(&mut self) -> Task<Message> {
-        let dynamic_image = clipboard_service::get_clipboard_image();
+        let clipboard_result = clipboard_service::get_clipboard_image();
 
-        if let Some(image) = dynamic_image {
+        if let Some((image, format)) = clipboard_result {
+            info!("Image pasted with format: {:?}", format);
+
             match &mut self.screen {
                 Screen::Search(search) => {
                     info!("Pasting image to search");
-                    let action = search.update(search::Message::ImagePasted(image));
+                    let action = search.update(search::Message::ImagePasted(image, format));
                     match action {
-                        search::Action::NavigatorToRegister(image) => {
-                            self.navigate_to(NavigationTarget::Register(image))
+                        search::Action::NavigatorToRegister(image, format) => {
+                            self.navigate_to(NavigationTarget::Register(image, format))
                         }
                         _ => Task::none(),
                     }
                 }
                 Screen::Register(register) => {
-                    info!("Pasting image to register");
-                    register.update(register::Message::ImagePasted(image));
+                    info!("Pasting image to register (format: {:?})", format);
+                    register.update(register::Message::ImagePasted(image, format));
                     Task::none()
                 }
                 _ => Task::none(),
@@ -209,8 +212,8 @@ impl Organizer {
                         search::Action::NavigateToUpdate(dto) => {
                             self.navigate_to(NavigationTarget::Update(dto))
                         }
-                        search::Action::NavigatorToRegister(dynamic_image) => {
-                            self.navigate_to(NavigationTarget::Register(dynamic_image))
+                        search::Action::NavigatorToRegister(dynamic_image, format) => {
+                            self.navigate_to(NavigationTarget::Register(dynamic_image, format))
                         }
                     }
                 } else {
@@ -309,45 +312,43 @@ impl Organizer {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        let mut subscriptions = vec![time::every(Duration::from_millis(100)).map(|_| {
-            if let Some(toast) = toast_service::pop_toast() {
-                info!("Popping toast: {}", toast.message);
-                Message::HandleToast(toast)
-            } else {
-                Message::Tick(Instant::now())
-            }
-        })];
+        let mut subscriptions = vec![];
 
-        let keyboard_subscription = match &self.screen {
-            Screen::Register(_) | Screen::Update(_) | Screen::Search(_) => {
-                event::listen().map(|event| match event {
-                    Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => match key {
-                        keyboard::Key::Named(keyboard::key::Named::Escape) => {
-                            Message::EscapePressed
+        subscriptions.push(Subscription::run_with_id(
+            "toast_channel",
+            iced::stream::channel(100, |mut output| async move {
+                if let Some(mut rx) = toast_service::take_toast_receiver() {
+                    loop {
+                        if let Some(toast) = rx.recv().await {
+                            info!("Received toast: {}", toast.message);
+                            let _ = output.send(Message::HandleToast(toast)).await;
                         }
-                        _ => Message::NoOps,
-                    },
-                    _ => Message::NoOps,
-                })
-            }
-            _ => Subscription::none(),
-        };
+                    }
+                }
+                std::future::pending().await
+            }),
+        ));
 
-        let clipboard_subscription = match &self.screen {
-            Screen::Register(_) | Screen::Search(_) => event::listen().map(|event| match event {
-                Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => match key {
+        if !self.toasts.is_empty() {
+            subscriptions
+                .push(time::every(Duration::from_secs(1)).map(|_| Message::Tick(Instant::now())));
+        }
+
+        subscriptions.push(event::listen().map(|event| match event {
+            Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+                match key {
+                    // ESC key
+                    keyboard::Key::Named(keyboard::key::Named::Escape) => Message::EscapePressed,
+                    // CTRL+V
                     keyboard::Key::Character(ref c) if c == "v" && modifiers.control() => {
                         Message::PasteShortcut
                     }
                     _ => Message::NoOps,
-                },
-                _ => Message::NoOps,
-            }),
-            _ => Subscription::none(),
-        };
+                }
+            }
+            _ => Message::NoOps,
+        }));
 
-        subscriptions.push(clipboard_subscription);
-        subscriptions.push(keyboard_subscription);
         Subscription::batch(subscriptions)
     }
 
@@ -381,9 +382,7 @@ impl Organizer {
     }
 }
 
-
 fn main() -> iced::Result {
-
     info!("Starting application");
     logger_service::init().expect("Failed to initialize logger");
 
@@ -405,10 +404,19 @@ fn main() -> iced::Result {
 
     rt.shutdown_background();
 
-
     // Start application
     iced::application(Organizer::title, Organizer::update, Organizer::view)
         .theme(Organizer::theme)
         .subscription(Organizer::subscription)
+        .window(window::Settings {
+            icon: Some(
+                window::icon::from_file_data(
+                    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/icon.ico")),
+                    None,
+                )
+                .expect("icon file should be reachable and in ICO file format"),
+            ),
+            ..Default::default()
+        })
         .run_with(Organizer::new)
 }

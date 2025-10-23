@@ -119,7 +119,7 @@ message:
     success: "Imagem atualizada com sucesso"
     error: "Erro ao atualizar imagem"
   delete:
-    success: "Imagem excluida com sucesso"
+    success: "Imagem excluída com sucesso"
     error: "Erro ao excluir imagem"
   tag:
     new: "Nova Tag"
@@ -131,7 +131,7 @@ message:
     error: "Erro ao abrir imagem"
   manage_tags:
     delete:
-      success: "Tag excluida com sucesso"
+      success: "Tag excluída com sucesso"
       error: "Erro ao excluir tag"
     update:
       success: "Tags atualizadas com sucesso"

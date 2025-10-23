@@ -7,6 +7,7 @@ use iced::widget::{Button, Column, Container, Image, Row, Scrollable, Text, Tool
 use iced::{Background, Border, Color, Length, Shadow, Theme, Vector};
 use iced_font_awesome::fa_icon_solid;
 use iced_modern_theme::Modern;
+use crate::models::enums::image_type::ImageType;
 
 #[derive(Debug, Clone)]
 pub struct ImageContainer {
@@ -45,9 +46,9 @@ impl ImageContainer {
                     .width(Length::Fill)
                     .height(Length::Fixed(180.0)),
             )
-                .padding(8)
-                .width(Length::Fill)
-                .height(Length::Fixed(180.0))
+            .padding(8)
+            .width(Length::Fill)
+            .height(Length::Fixed(180.0))
         } else {
             Container::new(fa_icon_solid("hourglass-half").size(32.0))
                 .padding(8)
@@ -69,7 +70,6 @@ impl ImageContainer {
         .height(Length::Fixed(90.0))
         .width(Length::Fill);
 
-        // Data de criação estilizada
         let created_at = Container::new(
             Text::new(&self.image_dto.created_at)
                 .size(11)
@@ -79,47 +79,36 @@ impl ImageContainer {
         .align_x(Horizontal::Center)
         .padding([4, 8]);
 
-        let delete_button: iced::Element<Message> = if !self.is_from_folder {
-            Tooltip::new(
-                Button::new(
-                    Container::new(fa_icon_solid("trash").size(16.0))
-                        .align_x(Horizontal::Center)
-                        .align_y(Vertical::Center)
-                        .width(Length::Fill)
-                        .height(Length::Fill),
-                )
-                .style(Modern::danger_button())
-                .width(Length::FillPortion(1))
-                .height(Length::Fixed(36.0))
-                .on_press(Message::DeleteImage(self.image_dto.clone())),
-                self.tooltip_delete.as_str(),
-                Position::Top,
-            )
-            .style(Modern::card_container())
-            .padding(8)
-            .gap(4)
-            .into()
+        let image_type = if self.is_from_folder {
+            ImageType::FromFolder
+        } else if self.image_dto.is_folder {
+            ImageType::Folder
         } else {
-            Tooltip::new(
-                Button::new(
-                    Container::new(fa_icon_solid("trash").size(16.0))
-                        .align_x(Horizontal::Center)
-                        .align_y(Vertical::Center)
-                        .width(Length::Fill)
-                        .height(Length::Fill),
-                )
-                .style(Modern::danger_button())
-                .width(Length::FillPortion(1))
-                .height(Length::Fixed(36.0))
-                .on_press(Message::DeleteImageFromFolder(self.image_dto.clone())),
-                self.tooltip_delete.as_str(),
-                Position::Top,
-            )
-            .style(Modern::card_container())
-            .padding(8)
-            .gap(4)
-            .into()
+            ImageType::Image
         };
+
+        let delete_message = Message::DeleteImage(self.image_dto.clone(), image_type);
+
+        let delete_button: iced::Element<Message> = Tooltip::new(
+            Button::new(
+                Container::new(fa_icon_solid("trash").size(16.0))
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .style(Modern::danger_button())
+            .width(Length::FillPortion(1))
+            .height(Length::Fixed(36.0))
+            .on_press(delete_message),
+            self.tooltip_delete.as_str(),
+            Position::Top,
+        )
+        .style(Modern::card_container())
+        .padding(8)
+        .gap(4)
+        .into();
+
         let copy_button = if !self.image_dto.is_folder {
             Some(
                 Tooltip::new(
@@ -208,7 +197,6 @@ impl ImageContainer {
         .padding(8)
         .gap(4);
 
-        // Construção final
         let mut action_buttons = Row::new()
             .spacing(6)
             .push(delete_button)
@@ -248,10 +236,15 @@ impl ImageContainer {
             .padding(5)
             .width(Length::Fixed(220.0))
             .height(Length::Fixed(360.0))
-            .style(|theme: &Theme| iced::widget::container::Style {
+            .style(move |theme: &Theme| iced::widget::container::Style {
                 background: Some(Background::Color(theme.palette().background)),
                 border: Border {
-                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.1),
+                    color: if self.image_dto.is_folder {
+                        Color::from_rgb(0.0, 0.5, 1.0) // Azul
+                    }
+                    else {
+                        Color::from_rgba(0.0, 0.0, 0.0, 0.1)
+                    },
                     width: 1.0,
                     radius: 12.0.into(),
                 },
@@ -263,5 +256,6 @@ impl ImageContainer {
                 ..Default::default()
             })
             .into()
+
     }
 }

@@ -1,7 +1,6 @@
 use crate::config::get_settings;
 use crate::dtos::image_dto::ImageDTO;
-use crate::services::image_processor;
-use crate::services::image_processor::{generate_thumbnail_from_image, save_image_as_png};
+use crate::services::image_processor::generate_thumbnail_from_image;
 use crate::utils::get_exe_dir;
 use image::DynamicImage;
 use log::{debug, info, warn};
@@ -10,32 +9,51 @@ use std::fs::{self, DirEntry};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use crate::models::enums::image_type::ImageType;
 
 // ===================================
 //         UTILITY FUNCTIONS
 // ===================================
 
-pub fn save_image_file_with_thumbnail(
-    id: i64,
-    image: DynamicImage,
-    original_format: image::ImageFormat, // Adicionar este parâmetro
-) -> Result<(String, String), Box<dyn std::error::Error>> {
-    let image_dir = get_exe_dir().join("images").join(id.to_string());
-    if !image_dir.exists() {
-        fs::create_dir_all(&image_dir)?;
+pub fn detect_image_format(bytes: &[u8]) -> image::ImageFormat {
+    if let Some(kind) = infer::get(bytes) {
+        match kind.mime_type() {
+            "image/jpeg" => image::ImageFormat::Jpeg,
+            "image/png" => image::ImageFormat::Png,
+            "image/gif" => image::ImageFormat::Gif,
+            "image/webp" => image::ImageFormat::WebP,
+            "image/bmp" => image::ImageFormat::Bmp,
+            "image/tiff" => image::ImageFormat::Tiff,
+            _ => image::ImageFormat::Png,
+        }
+    } else {
+        image::ImageFormat::Png
     }
+}
 
-    // Determinar extensão baseada no formato
-    let extension = match original_format {
+fn format_to_extension(format: image::ImageFormat) -> &'static str {
+    match format {
         image::ImageFormat::Jpeg => "jpg",
         image::ImageFormat::Png => "png",
         image::ImageFormat::Gif => "gif",
         image::ImageFormat::WebP => "webp",
         image::ImageFormat::Bmp => "bmp",
         image::ImageFormat::Tiff => "tiff",
-        _ => "png", // fallback
-    };
+        _ => "png",
+    }
+}
 
+pub fn save_image_file_with_thumbnail(
+    id: i64,
+    image: DynamicImage,
+    original_format: image::ImageFormat,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let image_dir = get_exe_dir().join("images").join(id.to_string());
+    if !image_dir.exists() {
+        fs::create_dir_all(&image_dir)?;
+    }
+
+    let extension = format_to_extension(original_format);
     let image_filename = format!("image_{}.{}", id, extension);
     let image_path = image_dir.join(&image_filename);
     let thumb_path = image_dir.join(format!("thumb_image_{}.png", id));
@@ -58,13 +76,12 @@ pub fn save_images_from_folder_with_thumbnails(
     folder_path: &Path,
 ) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
     let base_dir = get_exe_dir();
-
     let image_dir = base_dir.join("images").join(id.to_string());
+
     if !image_dir.exists() {
         fs::create_dir_all(&image_dir)?;
     }
 
-    let image_compression = get_settings().config.image_compression.unwrap_or(5);
     let thumb_compression = get_settings().config.thumb_compression.unwrap_or(9);
 
     let mut entries: Vec<DirEntry> = fs::read_dir(folder_path)?
@@ -75,7 +92,6 @@ pub fn save_images_from_folder_with_thumbnails(
         })
         .collect();
 
-    // Ordenar por nome do arquivo (ordem alfabética)
     entries.sort_by(|a, b| {
         let name_a = a.file_name().to_string_lossy().to_lowercase();
         let name_b = b.file_name().to_string_lossy().to_lowercase();
@@ -85,10 +101,10 @@ pub fn save_images_from_folder_with_thumbnails(
     let mut saved_paths = Vec::new();
     let mut index = 0;
 
-    // Criar thumb_folder usando o primeiro arquivo
     let folder_thumb_path = image_dir.join("thumb_folder.png");
     if let Some(first_entry) = entries.first() {
-        let first_image = image_processor::open_image(&first_entry.path())?;
+        let bytes = fs::read(first_entry.path())?;
+        let first_image = image::load_from_memory(&bytes)?;
         generate_thumbnail_from_image(
             &first_image,
             &folder_thumb_path,
@@ -101,14 +117,19 @@ pub fn save_images_from_folder_with_thumbnails(
 
     for entry in entries {
         let path = entry.path();
-        let image = image_processor::open_image(&path)?;
 
-        // Usar o padrão image_{id}_{incremento}
-        let png_filename = format!("image_{}_{}.png", id, index);
-        let image_path = image_dir.join(&png_filename);
+        let bytes = fs::read(&path)?;
+        let original_format = detect_image_format(&bytes);
+        let image = image::load_from_memory(&bytes)?;
+
+        let extension = format_to_extension(original_format);
+
+        let image_filename = format!("image_{}_{}.{}", id, index, extension);
+        let image_path = image_dir.join(&image_filename);
         let thumb_path = image_dir.join(format!("thumb_image_{}_{}.png", id, index));
 
-        save_image_as_png(&image, &image_path, image_compression)?;
+        image.save(&image_path)?;
+
         generate_thumbnail_from_image(&image, &thumb_path, 500, 500, thumb_compression)?;
 
         saved_paths.push((
@@ -131,179 +152,80 @@ pub fn save_images_from_folder_with_thumbnails(
 }
 
 // ===================================
-//         SMART DELETION FUNCTIONS
+//         DELETION FUNCTIONS
 // ===================================
 
-/// Deleta uma imagem de forma inteligente baseado no contexto
-/// - from_folder = true: deleta apenas o arquivo específico
-/// - from_folder = false: deleta a pasta inteira se contém apenas um arquivo, senão deleta apenas o arquivo
-pub async fn delete_image_smart(path: &str, from_folder: bool) -> Result<(), io::Error> {
+pub async fn delete_image(path: &str, image_type: ImageType) -> Result<(), io::Error> {
     let image_path = Path::new(path);
-    info!(
-        "Smart deletion for path: {} (from_folder: {})",
-        image_path.display(),
-        from_folder
-    );
+    info!("Deleting {:?} at {}", image_type, image_path.display());
 
     if !image_path.exists() {
         warn!("Path does not exist: {}", image_path.display());
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("Path does not exist: {}", image_path.display()),
-        ));
+        return Err(io::Error::new(io::ErrorKind::NotFound, "Path does not exist"));
     }
 
-    if from_folder {
-        // Se é de uma pasta, delete apenas o arquivo específico
-        delete_single_file_with_thumbnail(path).await
-    } else {
-        // Se não é de uma pasta, verifique se a pasta pai deve ser deletada completamente
-        delete_image_or_folder_smart(path).await
+    match image_type {
+        ImageType::FromFolder => {
+            delete_single_file_with_thumbnail(path).await?;
+
+            if let Some(parent) = image_path.parent() {
+                if count_image_files_in_folder(parent)? == 0 {
+                    delete_entire_folder(parent).await?;
+                }
+            }
+            Ok(())
+        }
+        ImageType::Image => {
+            delete_single_file_with_thumbnail(path).await?;
+
+            if let Some(parent) = image_path.parent() {
+                delete_entire_folder(parent).await?;
+            }
+            Ok(())
+        }
+        ImageType::Folder => delete_entire_folder(image_path).await,
     }
 }
 
-/// Deleta apenas um arquivo específico e seu thumbnail (usado para arquivos de pasta)
 async fn delete_single_file_with_thumbnail(path: &str) -> Result<(), io::Error> {
     let image_path = Path::new(path);
-    info!("Deleting single file: {}", image_path.display());
+    if image_path.exists() {
+        fs::remove_file(image_path)?;
+        info!("Deleted file: {}", image_path.display());
 
-    if !image_path.exists() {
-        warn!("File does not exist: {}", image_path.display());
-        return Ok(()); // Não é erro se o arquivo já não existe
-    }
-
-    // Deletar o arquivo principal
-    fs::remove_file(image_path)?;
-    info!("Successfully deleted file: {}", image_path.display());
-
-    // Deletar o thumbnail correspondente
-    if let Some(parent_dir) = image_path.parent() {
-        if let Some(file_name) = image_path.file_name() {
-            let file_name_str = file_name.to_string_lossy();
-
-            // Gerar o nome do thumbnail baseado no padrão
-            let thumb_name = if file_name_str.starts_with("image_") {
-                format!("thumb_{}", file_name_str)
-            } else {
-                format!("thumb_{}", file_name_str)
-            };
-
-            let thumb_path = parent_dir.join(thumb_name);
-
-            if thumb_path.exists() {
-                fs::remove_file(&thumb_path)?;
-                info!("Successfully deleted thumbnail: {}", thumb_path.display());
-            } else {
-                debug!("Thumbnail does not exist: {}", thumb_path.display());
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Analisa a pasta e decide se deve deletar apenas o arquivo ou a pasta inteira
-async fn delete_image_or_folder_smart(path: &str) -> Result<(), io::Error> {
-    let image_path = Path::new(path);
-
-    let parent_dir = match image_path.parent() {
-        Some(dir) => dir,
-        None => {
-            warn!(
-                "Could not determine parent directory for: {}",
-                image_path.display()
-            );
-            return delete_single_file_with_thumbnail(path).await;
-        }
-    };
-
-    // Verificar se a pasta pai é uma pasta numerada dentro de "images/"
-    let is_numbered_folder = parent_dir
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(|name| name.chars().all(|c| c.is_ascii_digit()))
-        .unwrap_or(false);
-
-    if !is_numbered_folder {
-        // Se não é uma pasta numerada, apenas delete o arquivo
-        info!("Not a numbered folder, deleting single file");
-        return delete_single_file_with_thumbnail(path).await;
-    }
-
-    // Contar quantos arquivos de imagem existem na pasta (excluindo thumbnails e meta.json)
-    let image_count = count_image_files_in_folder(parent_dir)?;
-
-    info!(
-        "Found {} image files in folder: {}",
-        image_count,
-        parent_dir.display()
-    );
-
-    if image_count <= 1 {
-        // Se há apenas um arquivo (ou nenhum), delete a pasta inteira
-        info!(
-            "Only one or no image files found, deleting entire directory: {}",
-            parent_dir.display()
-        );
-        delete_entire_folder(parent_dir).await
-    } else {
-        // Se há múltiplos arquivos, delete apenas o arquivo específico
-        info!("Multiple files found, deleting only the specific file");
-        delete_single_file_with_thumbnail(path).await
-    }
-}
-
-/// Conta quantos arquivos de imagem existem na pasta (excluindo thumbnails)
-fn count_image_files_in_folder(folder_path: &Path) -> Result<usize, io::Error> {
-    if !folder_path.exists() || !folder_path.is_dir() {
-        return Ok(0);
-    }
-
-    let mut count = 0;
-
-    for entry in fs::read_dir(folder_path)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.is_file() {
-            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                // Contar apenas arquivos de imagem que não sejam thumbnails
-                if is_image_file(&path)
-                    && !file_name.starts_with("thumb_")
-                    && file_name != "meta.json"
-                {
-                    count += 1;
+        if let Some(parent) = image_path.parent() {
+            if let Some(name) = image_path.file_name().and_then(|n| n.to_str()) {
+                let thumb_name = if name.starts_with("image_") {
+                    format!("thumb_{}.png", name.split('.').next().unwrap())
+                } else {
+                    format!("thumb_{}", name)
+                };
+                let thumb_path = parent.join(thumb_name);
+                if thumb_path.exists() {
+                    fs::remove_file(&thumb_path)?;
+                    info!("Deleted thumbnail: {}", thumb_path.display());
                 }
             }
         }
+    } else {
+        debug!("File does not exist: {}", image_path.display());
     }
-
-    Ok(count)
+    Ok(())
 }
 
-/// Deleta uma pasta inteira com todo seu conteúdo
 async fn delete_entire_folder(folder_path: &Path) -> Result<(), io::Error> {
     if !folder_path.exists() {
         warn!("Folder does not exist: {}", folder_path.display());
         return Ok(());
     }
-
-    // Verificação de segurança: nunca deletar a pasta "images" raiz
-    if let Some(folder_name) = folder_path.file_name().and_then(|n| n.to_str()) {
-        if folder_name == "images" {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "Cannot delete the root images folder",
-            ));
-        }
+    if folder_path.file_name().and_then(|n| n.to_str()) == Some("images") {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "Cannot delete root images folder"));
     }
-
-    info!("Deleting entire directory: {}", folder_path.display());
     fs::remove_dir_all(folder_path)?;
-    info!("Successfully deleted directory: {}", folder_path.display());
-
+    info!("Deleted folder: {}", folder_path.display());
     Ok(())
 }
+
 
 // ===================================
 //         OTHER UTILITY FUNCTIONS
@@ -328,30 +250,6 @@ pub fn open_in_file_explorer(path: &Path) -> io::Result<()> {
     }
 
     Ok(())
-}
-
-pub fn is_image_path(path: &str) -> bool {
-    use std::path::Path;
-
-    let path = Path::new(path);
-
-    if !path.exists() {
-        return false;
-    }
-
-    if !path.is_file() {
-        return false;
-    }
-
-    if let Some(extension) = path.extension() {
-        let ext = extension.to_string_lossy().to_lowercase();
-        matches!(
-            ext.as_str(),
-            "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "ico" | "tiff" | "tif"
-        )
-    } else {
-        false
-    }
 }
 
 fn is_image_file(path: &Path) -> bool {
@@ -382,7 +280,8 @@ pub fn expand_folder_dto(image_dto: &ImageDTO) -> Vec<ImageDTO> {
             let path = entry.path();
             if path.is_file() {
                 if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
-                    if filename.ends_with(".png") && !filename.starts_with("thumb_") {
+
+                    if is_image_file(&path) && !filename.starts_with("thumb_") {
                         return Some((filename.to_string(), path));
                     }
                 }
@@ -391,12 +290,14 @@ pub fn expand_folder_dto(image_dto: &ImageDTO) -> Vec<ImageDTO> {
         })
         .collect();
 
-    // Ordenação natural (compreende números)
+
     files.sort_by(|a, b| compare(&a.0, &b.0));
 
     let mut dtos = Vec::new();
     for (index, (filename, path)) in files.into_iter().enumerate() {
-        let thumb_path = folder_path.join(format!("thumb_{}", filename));
+
+        let base_name = filename.split('.').next().unwrap_or(&filename);
+        let thumb_path = folder_path.join(format!("thumb_{}.png", base_name));
 
         let dto = ImageDTO {
             id: index as i64,
@@ -412,4 +313,31 @@ pub fn expand_folder_dto(image_dto: &ImageDTO) -> Vec<ImageDTO> {
         dtos.push(dto);
     }
     dtos
+}
+
+fn count_image_files_in_folder(folder_path: &Path) -> Result<usize, io::Error> {
+    if !folder_path.exists() || !folder_path.is_dir() {
+        return Ok(0);
+    }
+
+    let mut count = 0;
+
+    for entry in fs::read_dir(folder_path)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_file() {
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+
+                if is_image_file(&path)
+                    && !file_name.starts_with("thumb_")
+                    && file_name != "meta.json"
+                {
+                    count += 1;
+                }
+            }
+        }
+    }
+
+    Ok(count)
 }

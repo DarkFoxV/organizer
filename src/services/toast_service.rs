@@ -1,29 +1,25 @@
 use crate::models::toast::{Toast, ToastKind};
 use once_cell::sync::Lazy;
-use std::sync::{
-    RwLock,
-    atomic::{AtomicU32, Ordering},
-};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
+use tokio::sync::mpsc;
 
-// Contador global de ID de toast
 static NEXT_ID: AtomicU32 = AtomicU32::new(1);
 
-// Pilha global protegida
-static TOASTS: Lazy<RwLock<Vec<Toast>>> = Lazy::new(|| RwLock::new(Vec::new()));
+static TOAST_CHANNEL: Lazy<(mpsc::UnboundedSender<Toast>, std::sync::Mutex<Option<mpsc::UnboundedReceiver<Toast>>>)> = Lazy::new(|| {
+    let (tx, rx) = mpsc::unbounded_channel();
+    (tx, std::sync::Mutex::new(Some(rx)))
+});
 
-/// Adiciona um novo toast no topo da pilha
+pub fn take_toast_receiver() -> Option<mpsc::UnboundedReceiver<Toast>> {
+    TOAST_CHANNEL.1.lock().ok()?.take()
+}
+
 fn push_toast(mut toast: Toast) {
     let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
     toast.id = Some(id);
 
-    if let Ok(mut toasts) = TOASTS.write() {
-        toasts.push(toast);
-    }
-}
-/// Remove e retorna o toast mais recente (último inserido)
-pub fn pop_toast() -> Option<Toast> {
-    TOASTS.write().ok()?.pop()
+    let _ = TOAST_CHANNEL.0.send(toast);
 }
 
 pub fn push_success<S: Into<String>>(message: S) {

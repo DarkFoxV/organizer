@@ -1,25 +1,25 @@
-use crate::components::tag_selector;
+use crate::components::{scrollable_form, tag_selector, ScrollableFormConfig};
 use crate::components::tag_selector::TagSelector;
 use crate::dtos::image_dto::ImageUpdateDTO;
 use crate::dtos::tag_dto::TagDTO;
 use crate::services::file_service::{
-    is_image_path, save_image_file_with_thumbnail, save_images_from_folder_with_thumbnails,
+    save_image_file_with_thumbnail, save_images_from_folder_with_thumbnails,
 };
-use crate::services::image_processor::{dynamic_image_to_rgba, open_image};
+use crate::services::image_processor::{dynamic_image_to_rgba};
 use crate::services::toast_service::{push_error, push_success};
 use crate::services::{image_service, tag_service};
 use iced::widget::image::Handle;
 use iced::widget::{
-    Button, Column, Container, Image, Row, Scrollable, Space, Text, text_input,
+    Button, Column, Container, Image, Row, Text, text_input,
 };
 use iced::{Alignment, Color, Element, Length, Padding, Task};
 use iced_font_awesome::{fa_icon, fa_icon_solid};
 use iced_modern_theme::Modern;
-use image::{DynamicImage, ImageFormat, ImageReader};
+use image::{DynamicImage, ImageFormat};
 use log::{error, info};
 use rfd::AsyncFileDialog;
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path};
 use crate::components::header::header;
 
 #[derive(Debug, Clone)]
@@ -32,7 +32,7 @@ pub enum Message {
     TagsLoaded(HashSet<TagDTO>),
     Submit,
     NavigateToSearch,
-    ImagePasted(DynamicImage),
+    ImagePasted(DynamicImage, ImageFormat),
     NoOps,
 }
 
@@ -55,7 +55,7 @@ pub struct Register {
 }
 
 impl Register {
-    pub fn new(dynamic_image: Option<DynamicImage>) -> (Self, Task<Message>) {
+    pub fn new(dynamic_image: Option<DynamicImage>, format: Option<ImageFormat>) -> (Self, Task<Message>) {
         let tag_selector = TagSelector::new(HashSet::new(), true, true);
         let image_handle = dynamic_image.as_ref().map(|img| dynamic_image_to_rgba(img));
         (
@@ -64,7 +64,7 @@ impl Register {
                 image_handle,
                 is_folder: false,
                 path: None,
-                original_format: None,
+                original_format: format,
                 description: String::new(),
                 tag_selector,
                 tags_loaded: false,
@@ -84,46 +84,88 @@ impl Register {
         )
     }
 
+    fn reset_image_state(&mut self) {
+        self.dynamic_image = None;
+        self.image_handle = None;
+        self.original_format = None;
+        self.is_folder = false;
+        self.path = None;
+    }
+
+    fn set_folder_state(&mut self, path: String) {
+        self.is_folder = true;
+        self.path = Some(path);
+        self.dynamic_image = None;
+        self.image_handle = None;
+        self.original_format = None;
+    }
+
     pub fn update(&mut self, message: Message) -> Action {
         match message {
             Message::OpenImagePicker => Action::Run(pick_path(false)),
             Message::OpenFolderPicker => Action::Run(pick_path(true)),
 
             Message::ImageChosen(path) => {
-                if is_image_path(&path) {
-                    match open_image(&path) {
-                        Ok(dynamic_image) => {
-                            // Detectar formato do arquivo original
-                            let format = ImageReader::open(&path)
-                                .ok()
-                                .and_then(|reader| reader.with_guessed_format().ok())
-                                .and_then(|reader| reader.format())
-                                .unwrap_or(ImageFormat::Png);
+                let path_buf = Path::new(&path);
 
-                            self.image_handle = Some(dynamic_image_to_rgba(&dynamic_image));
-                            self.dynamic_image = Some(dynamic_image);
-                            self.original_format = Some(format);
-                            self.is_folder = false;
-                            self.path = None;
-                        }
-                        Err(e) => {
-                            error!("Failed to open image: {}", e);
-                            self.dynamic_image = None;
-                            self.image_handle = None;
-                            self.original_format = None;
+                // Verifica se é um diretório
+                if path_buf.is_dir() {
+                    info!("Chosen path is a directory, treating as folder");
+                    self.set_folder_state(path);
+                    return Action::None;
+                }
+
+                // Tenta ler os bytes do arquivo
+                match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        // Usa infer para detectar o tipo do arquivo
+                        if let Some(kind) = infer::get(&bytes) {
+                            if kind.mime_type().starts_with("image/") {
+                                // É uma imagem, tenta abrir
+                                match image::load_from_memory(&bytes) {
+                                    Ok(dynamic_image) => {
+                                        // Converte o mime type para ImageFormat
+                                        let format = match kind.mime_type() {
+                                            "image/jpeg" => ImageFormat::Jpeg,
+                                            "image/png" => ImageFormat::Png,
+                                            "image/gif" => ImageFormat::Gif,
+                                            "image/webp" => ImageFormat::WebP,
+                                            "image/bmp" => ImageFormat::Bmp,
+                                            "image/tiff" => ImageFormat::Tiff,
+                                            _ => ImageFormat::Png,
+                                        };
+
+                                        self.image_handle = Some(dynamic_image_to_rgba(&dynamic_image));
+                                        self.dynamic_image = Some(dynamic_image);
+                                        self.original_format = Some(format);
+                                        self.is_folder = false;
+                                        self.path = None;
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to decode image: {}", e);
+                                        self.reset_image_state();
+                                    }
+                                }
+                            } else {
+                                // Não é imagem
+                                info!("File is not an image ({})", kind.mime_type());
+                                self.reset_image_state();
+                            }
+                        } else {
+                            // Não conseguiu detectar tipo
+                            info!("Could not detect file type");
+                            self.reset_image_state();
                         }
                     }
-                } else {
-                    info!("Chosen path is not an image, treating as folder");
-                    self.is_folder = true;
-                    self.path = Some(path);
-                    self.dynamic_image = None;
-                    self.image_handle = None;
-                    self.original_format = None;
+                    Err(e) => {
+                        error!("Failed to read file: {}", e);
+                        self.reset_image_state();
+                    }
                 }
 
                 Action::None
             }
+
             Message::DescriptionChanged(desc) => {
                 self.description = desc;
                 Action::None
@@ -270,16 +312,17 @@ impl Register {
                 }
             }
             Message::NavigateToSearch => Action::GoToSearch,
-            Message::ImagePasted(dynamic_image) => {
+            Message::ImagePasted(dynamic_image,format) => {
                 info!("Image pasted from clipboard");
                 self.image_handle = Some(dynamic_image_to_rgba(&dynamic_image));
                 self.dynamic_image = Some(dynamic_image);
                 self.is_folder = false;
                 self.path = None;
+                self.original_format = Option::from(format);
                 Action::None
             }
             Message::NoOps => {
-                self.submitted = false; // Reset submitted state on error
+                self.submitted = false;
                 Action::None
             }
         }
@@ -296,11 +339,11 @@ impl Register {
                     .width(Length::Fill)
                     .height(Length::Fill),
             )
-            .padding(15)
-            .width(300.0)
-            .height(300.0)
-            .style(Modern::sheet_container())
-            .into()
+                .padding(15)
+                .width(300.0)
+                .height(300.0)
+                .style(Modern::sheet_container())
+                .into()
         } else if self.is_folder {
             Container::new(
                 Column::new()
@@ -319,19 +362,19 @@ impl Register {
                                 .unwrap_or_default()
                                 .to_string_lossy(),
                         )
-                        .size(14)
-                        .color(Color::from_rgb(0.3, 0.3, 0.3))
+                            .size(14)
+                            .color(Color::from_rgb(0.3, 0.3, 0.3))
                     } else {
                         Text::new("")
                     }),
             )
-            .padding(40)
-            .width(300.0)
-            .height(300.0)
-            .align_y(Alignment::Center)
-            .align_x(Alignment::Center)
-            .style(Modern::sheet_container())
-            .into()
+                .padding(40)
+                .width(300.0)
+                .height(300.0)
+                .align_y(Alignment::Center)
+                .align_x(Alignment::Center)
+                .style(Modern::sheet_container())
+                .into()
         } else {
             Container::new(
                 Column::new()
@@ -344,13 +387,13 @@ impl Register {
                             .color(Color::from_rgb(0.5, 0.5, 0.5)),
                     ),
             )
-            .padding(40)
-            .width(300.0)
-            .height(300.0)
-            .align_y(Alignment::Center)
-            .align_x(Alignment::Center)
-            .style(Modern::sheet_container())
-            .into()
+                .padding(40)
+                .width(300.0)
+                .height(300.0)
+                .align_y(Alignment::Center)
+                .align_x(Alignment::Center)
+                .style(Modern::sheet_container())
+                .into()
         };
 
         let upload_section = Container::new(
@@ -373,9 +416,9 @@ impl Register {
                                     .push(fa_icon_solid("folder-plus").size(16.0))
                                     .push(Text::new(t!("register.button.select_image"))),
                             )
-                            .style(Modern::primary_button())
-                            .padding(Padding::from([12, 20]))
-                            .on_press(Message::OpenImagePicker),
+                                .style(Modern::primary_button())
+                                .padding(Padding::from([12, 20]))
+                                .on_press(Message::OpenImagePicker),
                         )
                         .push(
                             Button::new(
@@ -385,15 +428,15 @@ impl Register {
                                     .push(fa_icon_solid("folder-plus").size(16.0))
                                     .push(Text::new(t!("register.button.select_folder"))),
                             )
-                            .style(Modern::primary_button())
-                            .padding(Padding::from([12, 20]))
-                            .on_press(Message::OpenFolderPicker),
+                                .style(Modern::primary_button())
+                                .padding(Padding::from([12, 20]))
+                                .on_press(Message::OpenFolderPicker),
                         ),
                 ),
         )
-        .padding(30)
-        .style(Modern::card_container())
-        .width(Length::Fill);
+            .padding(30)
+            .style(Modern::card_container())
+            .width(Length::Fill);
 
         // Description section
         let description_section = Container::new(
@@ -409,15 +452,15 @@ impl Register {
                         t!("register.placeholder.description").as_ref(),
                         &self.description,
                     )
-                    .style(Modern::text_input())
-                    .padding(Padding::from([12, 16]))
-                    .size(16)
-                    .on_input(Message::DescriptionChanged),
+                        .style(Modern::text_input())
+                        .padding(Padding::from([12, 16]))
+                        .size(16)
+                        .on_input(Message::DescriptionChanged),
                 ),
         )
-        .padding(30)
-        .style(Modern::card_container())
-        .width(Length::Fill);
+            .padding(30)
+            .style(Modern::card_container())
+            .width(Length::Fill);
 
         // Tags section
         let tags_section = Container::new(
@@ -444,14 +487,14 @@ impl Register {
                                 .color(Color::from_rgb(0.6, 0.6, 0.6)),
                         ),
                     )
-                    .padding(20)
-                    .style(Modern::floating_container())
-                    .into()
+                        .padding(20)
+                        .style(Modern::floating_container())
+                        .into()
                 }),
         )
-        .padding(30)
-        .style(Modern::card_container())
-        .width(Length::Fill);
+            .padding(30)
+            .style(Modern::card_container())
+            .width(Length::Fill);
 
         // Fields validation
         let ready = !self.description.trim().is_empty()
@@ -493,7 +536,7 @@ impl Register {
                                 } else {
                                     "floppy-disk"
                                 })
-                                .size(18.0),
+                                    .size(18.0),
                             )
                             .push(
                                 Text::new(if self.submitted {
@@ -501,10 +544,10 @@ impl Register {
                                 } else {
                                     t!("register.button.submit")
                                 })
-                                .size(16),
+                                    .size(16),
                             ),
                     )
-                    .padding(Padding::from([15, 30]));
+                        .padding(Padding::from([15, 30]));
 
                     if ready && !self.submitted {
                         button = button
@@ -519,25 +562,18 @@ impl Register {
                     button
                 }),
         )
-        .padding(30)
-        .style(Modern::floating_container())
-        .width(Length::Fill);
+            .padding(30)
+            .style(Modern::floating_container())
+            .width(Length::Fill);
 
         // Main content
-        let main_content = Column::new().spacing(20).push(header).push(
-            Scrollable::new(
-                Column::new()
-                    .padding(20)
-                    .spacing(20)
-                    .push(upload_section)
-                    .push(description_section)
-                    .push(tags_section)
-                    .push(Space::with_height(20))
-                    .push(submit_section),
-            )
-            .width(Length::Fill)
-            .height(Length::Fill),
-        );
+        let main_content = scrollable_form(ScrollableFormConfig {
+            header,
+            content_section: upload_section.into(),
+            description_section: description_section.into(),
+            tags_section: tags_section.into(),
+            bottom_section: submit_section.into(),
+        });
 
         Container::new(main_content)
             .width(Length::Fill)

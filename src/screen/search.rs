@@ -14,22 +14,23 @@ use crate::services::{file_service, image_service, tag_service};
 use iced::alignment::{Horizontal};
 use iced::widget::image::{Handle};
 use iced::widget::{
-    Column, Container, Row, Scrollable, Space, Text, TextInput, button,
+    Column, Container, Row, Scrollable, Space,
     scrollable,
 };
 use iced::{Element, Length, Task};
 use iced_modern_theme::Modern;
-use image::DynamicImage;
+use image::{DynamicImage, ImageFormat};
 use log::{error, info};
 use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
+use crate::models::enums::image_type::ImageType;
 
 pub enum Action {
     None,
     Run(Task<Message>),
     NavigateToUpdate(ImageDTO),
-    NavigatorToRegister(Option<DynamicImage>),
+    NavigatorToRegister(Option<DynamicImage>, Option<ImageFormat>),
 }
 
 #[derive(Debug, Clone)]
@@ -42,8 +43,7 @@ pub enum Message {
     PushContainer(Vec<ImageDTO>, u64, u64, bool),
     OpenImage(ImageDTO),
     OpenLocalImage(i64),
-    DeleteImage(ImageDTO),
-    DeleteImageFromFolder(ImageDTO),
+    DeleteImage(ImageDTO, ImageType),
     CopyImage(String),
     TagsLoaded(HashSet<TagDTO>),
     GoToPage(u64),
@@ -52,7 +52,7 @@ pub enum Message {
     CloseFolder,
     NavigateToRegister,
     SortOrderChanged(SortOrder),
-    ImagePasted(DynamicImage),
+    ImagePasted(DynamicImage, ImageFormat),
     PreviousImage,
     NextImage,
     ScrollChanged(scrollable::Viewport),
@@ -256,37 +256,19 @@ impl Search {
                 Action::Run(task)
             }
 
-            Message::DeleteImage(dto) => {
+            Message::DeleteImage(dto, image_type) => {
                 self.images.retain(|img| img.id != dto.id);
                 let task = Task::perform(
                     async move {
-                        // Usar a nova função de deleção inteligente
-                        // from_folder = false (imagem principal/pasta)
-                        if let Err(e) = file_service::delete_image_smart(&dto.path, false).await {
-                            error!("Failed to delete image files: {}", e);
-                        }
-
                         // Deletar do banco de dados
                         if let Err(e) = image_service::delete_image(dto.id).await {
                             error!("Failed to delete image from database: {}", e);
                         }
-                    },
-                    |_| {
-                        push_success(t!("message.delete.success"));
-                        Message::NoOps
-                    },
-                );
-                Action::Run(task)
-            }
-
-            Message::DeleteImageFromFolder(dto) => {
-                self.images.retain(|img| img.id != dto.id);
-                let task = Task::perform(
-                    async move {
-                        // Usar a nova função de deleção inteligente
-                        if let Err(e) = file_service::delete_image_smart(&dto.path, true).await {
-                            error!("Failed to delete image file from folder: {}", e);
+                        
+                        if let Err(e) = file_service::delete_image(&dto.path, image_type).await {
+                            error!("Failed to delete image files: {}", e);
                         }
+                        
                     },
                     |_| {
                         push_success(t!("message.delete.success"));
@@ -474,10 +456,10 @@ impl Search {
                 Action::Run(task)
             }
 
-            Message::NavigateToRegister => Action::NavigatorToRegister(None),
-            Message::ImagePasted(dynamic_image) => {
+            Message::NavigateToRegister => Action::NavigatorToRegister(None, None),
+            Message::ImagePasted(dynamic_image, format) => {
                 info!("Image pasted in search");
-                Action::NavigatorToRegister(Some(dynamic_image))
+                Action::NavigatorToRegister(Some(dynamic_image), Some(format))
             }
             _others => Action::None,
         }
