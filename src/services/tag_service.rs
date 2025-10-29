@@ -23,11 +23,11 @@ pub async fn get_tags_for_images(
         .join(JoinType::InnerJoin, image_tag::Relation::Tag.def())
         .filter(image_tag::Column::ImageId.is_in(image_ids.to_vec()))
         .select_only()
-        .column(image_tag::Column::ImageId) // Adicione esta coluna
+        .column(image_tag::Column::ImageId)
         .column(tag::Column::Id)
         .column(tag::Column::Name)
         .column(tag::Column::Color)
-        .into_tuple::<(i64, i64, String, TagColor)>() // Agora inclui image_id
+        .into_tuple::<(i64, i64, String, TagColor)>()
         .all(db)
         .await?;
 
